@@ -1,4 +1,3 @@
-import React from 'react';
 import type { ProjectileStyle } from '../../../types';
 
 const STROKE = '#140820';

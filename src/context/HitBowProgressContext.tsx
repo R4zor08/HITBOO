@@ -12,6 +12,11 @@ import {
   yesterdayLocalYmd
 } from '../game/dateUtils';
 import { setAudioLevels } from '../game/gameAudio';
+import { syncGameMusic } from '../game/gameMusic';
+import {
+  coerceHitBowDifficulty,
+  type HitBowDifficulty
+} from '../game/difficulty';
 import type { MatchRewardResult, MatchResult } from '../game/matchResult';
 import { SHOP_CATALOG } from '../game/shopCatalog';
 import { STORAGE } from '../game/storageKeys';
@@ -21,21 +26,35 @@ import {
   DEFAULT_PLAYER_CHARACTER_ID,
   CHARACTER_IDS
 } from '../game/charactersCatalog';
-import { DEFAULT_WEAPON_ID } from '../game/weaponsCatalog';
+import {
+  DEFAULT_WEAPON_ID,
+  PLAYABLE_WEAPON_PRESETS
+} from '../game/weaponsCatalog';
 
 export type HitBowSettings = {
   masterVolume: number;
   sfxVolume: number;
   reduceMotion: boolean;
   defaultAimSensitivity: number;
+  musicEnabled: boolean;
+  musicVolume: number;
+  /** Standard match AI tuning (wind spread, aim error, enemy weapon). */
+  difficulty: HitBowDifficulty;
 };
 
 const DEFAULT_SETTINGS: HitBowSettings = {
   masterVolume: 1,
   sfxVolume: 1,
   reduceMotion: false,
-  defaultAimSensitivity: 1
+  defaultAimSensitivity: 1,
+  musicEnabled: false,
+  musicVolume: 0.35,
+  difficulty: 'standard'
 };
+
+const PLAYABLE_WEAPON_IDS = new Set(
+  PLAYABLE_WEAPON_PRESETS.map((w) => w.id)
+);
 
 const INITIAL_COINS = 12450;
 const DEFAULT_PLAYER_NAME = 'GUEST_7734';
@@ -66,6 +85,72 @@ function readCharacter(storageKey: string, fallback: CharacterId): CharacterId {
   return fallback;
 }
 
+function clamp01(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(1, Math.max(0, n));
+}
+
+function clampAimSensitivity(n: number): number {
+  if (!Number.isFinite(n)) return DEFAULT_SETTINGS.defaultAimSensitivity;
+  return Math.min(1.6, Math.max(0.6, n));
+}
+
+function sanitizeSettings(partial: Partial<HitBowSettings>): HitBowSettings {
+  return {
+    masterVolume: clamp01(
+      partial.masterVolume ?? DEFAULT_SETTINGS.masterVolume
+    ),
+    sfxVolume: clamp01(partial.sfxVolume ?? DEFAULT_SETTINGS.sfxVolume),
+    reduceMotion:
+      typeof partial.reduceMotion === 'boolean'
+        ? partial.reduceMotion
+        : DEFAULT_SETTINGS.reduceMotion,
+    defaultAimSensitivity: clampAimSensitivity(
+      partial.defaultAimSensitivity ??
+        DEFAULT_SETTINGS.defaultAimSensitivity
+    ),
+    musicEnabled:
+      typeof partial.musicEnabled === 'boolean'
+        ? partial.musicEnabled
+        : DEFAULT_SETTINGS.musicEnabled,
+    musicVolume: clamp01(
+      partial.musicVolume ?? DEFAULT_SETTINGS.musicVolume
+    ),
+    difficulty: coerceHitBowDifficulty(
+      partial.difficulty ?? DEFAULT_SETTINGS.difficulty
+    )
+  };
+}
+
+function readFiniteInt(
+  key: string,
+  fallback: number,
+  min: number,
+  max: number
+): number {
+  const v = readJson<unknown>(key, null);
+  const n =
+    typeof v === 'number'
+      ? v
+      : typeof v === 'string'
+        ? Number(v)
+        : NaN;
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
+
+function sanitizePlayerName(raw: unknown): string {
+  if (typeof raw !== 'string') return DEFAULT_PLAYER_NAME;
+  const t = raw.trim().slice(0, 24);
+  return t || DEFAULT_PLAYER_NAME;
+}
+
+function sanitizeEquippedWeaponId(id: unknown): string {
+  return typeof id === 'string' && PLAYABLE_WEAPON_IDS.has(id)
+    ? id
+    : DEFAULT_WEAPON_ID;
+}
+
 type HitBowProgressValue = {
   playerName: string;
   playerXp: number;
@@ -91,6 +176,7 @@ type HitBowProgressValue = {
   claimDailyReward: () => { coins: number; streak: number } | null;
   applyMatchRewards: (result: MatchResult) => MatchRewardResult;
   updateSettings: (partial: Partial<HitBowSettings>) => void;
+  updatePlayerName: (name: string) => void;
   resetProgress: () => void;
 };
 
@@ -118,10 +204,9 @@ export function HitBowProgressProvider({
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setPlayerName(readJson<string>(STORAGE.playerName, DEFAULT_PLAYER_NAME));
-    setPlayerXp(readJson<number>(STORAGE.playerXp, 0));
-    const storedCoins = readJson<number | null>(STORAGE.coins, null);
-    setCoins(typeof storedCoins === 'number' ? storedCoins : INITIAL_COINS);
+    setPlayerName(sanitizePlayerName(readJson(STORAGE.playerName, null)));
+    setPlayerXp(readFiniteInt(STORAGE.playerXp, 0, 0, 9_999_999));
+    setCoins(readFiniteInt(STORAGE.coins, INITIAL_COINS, 0, 99_999_999));
     setOwnedShopItemIds(readJson<string[]>(STORAGE.ownedShop, []));
     setEquippedSkinId(readJson<string | null>(STORAGE.equippedSkin, null));
     setEquippedCharacterId(
@@ -131,16 +216,21 @@ export function HitBowProgressProvider({
       readCharacter(STORAGE.equippedEnemyCharacter, DEFAULT_ENEMY_CHARACTER_ID)
     );
     setEquippedWeaponIdState(
-      readJson<string>(STORAGE.equippedWeapon, DEFAULT_WEAPON_ID)
+      sanitizeEquippedWeaponId(readJson(STORAGE.equippedWeapon, null))
     );
-    const merged = {
+    const merged = sanitizeSettings({
       ...DEFAULT_SETTINGS,
       ...readJson<Partial<HitBowSettings>>(STORAGE.settings, {})
-    };
+    });
     setSettings(merged);
     setAudioLevels({
       master: merged.masterVolume,
       sfx: merged.sfxVolume
+    });
+    syncGameMusic({
+      enabled: merged.musicEnabled,
+      musicVolume: merged.musicVolume,
+      masterVolume: merged.masterVolume
     });
     setLastClaimDate(readJson<string | null>(STORAGE.dailyLast, null));
     setStreak(readJson<number>(STORAGE.dailyStreak, 0));
@@ -199,6 +289,11 @@ export function HitBowProgressProvider({
     setAudioLevels({
       master: settings.masterVolume,
       sfx: settings.sfxVolume
+    });
+    syncGameMusic({
+      enabled: settings.musicEnabled,
+      musicVolume: settings.musicVolume,
+      masterVolume: settings.masterVolume
     });
   }, [settings, hydrated]);
 
@@ -296,20 +391,29 @@ export function HitBowProgressProvider({
           : win
             ? 220
             : 110) + Math.round(result.player.damage * 0.08);
-      const nextXp = playerXp + xpAwarded;
+      const previousPlayerXp = playerXp;
+      const nextXp = previousPlayerXp + xpAwarded;
       setCoins((c) => c + coinsAwarded);
       setPlayerXp(nextXp);
       return {
         coinsAwarded,
         xpAwarded,
-        newRank: rankFromXp(nextXp)
+        newRank: rankFromXp(nextXp),
+        newPlayerXp: nextXp,
+        previousPlayerXp
       };
     },
     [playerXp]
   );
 
   const updateSettings = useCallback((partial: Partial<HitBowSettings>) => {
-    setSettings((s) => ({ ...s, ...partial }));
+    setSettings((s) => sanitizeSettings({ ...s, ...partial }));
+  }, []);
+
+  const updatePlayerName = useCallback((name: string) => {
+    const t = name.trim();
+    if (!t) return;
+    setPlayerName(t.slice(0, 24));
   }, []);
 
   const resetProgress = useCallback(() => {
@@ -326,6 +430,11 @@ export function HitBowProgressProvider({
     setLastClaimDate(null);
     setStreak(0);
     setAudioLevels({ master: 1, sfx: 1 });
+    syncGameMusic({
+      enabled: DEFAULT_SETTINGS.musicEnabled,
+      musicVolume: DEFAULT_SETTINGS.musicVolume,
+      masterVolume: DEFAULT_SETTINGS.masterVolume
+    });
   }, []);
 
   const value = useMemo(
@@ -353,6 +462,7 @@ export function HitBowProgressProvider({
       claimDailyReward,
       applyMatchRewards,
       updateSettings,
+      updatePlayerName,
       resetProgress
     }),
     [
@@ -378,6 +488,7 @@ export function HitBowProgressProvider({
       claimDailyReward,
       applyMatchRewards,
       updateSettings,
+      updatePlayerName,
       resetProgress
     ]
   );

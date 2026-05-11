@@ -1,4 +1,4 @@
-import React, { cloneElement, useEffect, useState } from 'react';
+import React, { cloneElement, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   SwordsIcon,
@@ -7,7 +7,8 @@ import {
   UserIcon,
   SettingsIcon,
   MedalIcon,
-  LayersIcon
+  LayersIcon,
+  BarChart3
 } from 'lucide-react';
 import { useHitBowProgress } from '../context/HitBowProgressContext';
 import { NeonButton } from '../components/ui/NeonButton';
@@ -19,6 +20,11 @@ import { formatCountdown, msUntilLocalMidnight } from '../game/dateUtils';
 import { SHOP_CATALOG } from '../game/shopCatalog';
 import { CHARACTER_CATALOG } from '../game/charactersCatalog';
 import { PLAYABLE_WEAPON_PRESETS } from '../game/weaponsCatalog';
+import {
+  readMatchHistory,
+  summarizeHistory,
+  type MatchHistoryEntry
+} from '../game/matchHistory';
 import { StickerAvatar } from '../components/game/StickerAvatar';
 
 interface MainMenuProps {
@@ -26,13 +32,24 @@ interface MainMenuProps {
   onStartPractice: () => void;
 }
 
-type ModalId = 'shop' | 'daily' | 'settings' | 'loadout' | null;
+type ModalId = 'shop' | 'daily' | 'settings' | 'loadout' | 'stats' | null;
 
 export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
   const progress = useHitBowProgress();
   const [modal, setModal] = useState<ModalId>(null);
   const [countdownTick, setCountdownTick] = useState(0);
   const [shopFlash, setShopFlash] = useState<string | null>(null);
+  const [shopFeedback, setShopFeedback] = useState('');
+  const [matchHistory, setMatchHistory] = useState<MatchHistoryEntry[]>([]);
+
+  const statsSummary = useMemo(
+    () => summarizeHistory(matchHistory),
+    [matchHistory]
+  );
+
+  useEffect(() => {
+    if (modal === 'stats') setMatchHistory(readMatchHistory());
+  }, [modal]);
 
   useEffect(() => {
     if (modal !== 'daily' || progress.canClaimDaily) return;
@@ -51,7 +68,20 @@ export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
   };
 
   const onBuy = (id: string) => {
+    const item = SHOP_CATALOG.find((x) => x.id === id);
+    const owned = item && progress.ownedShopItemIds.includes(id);
+    const canAfford = item && progress.coins >= item.price;
     const ok = progress.purchaseItem(id);
+    if (ok) {
+      setShopFeedback(`Purchased ${item?.name ?? 'item'}. Equipped.`);
+    } else if (owned) {
+      setShopFeedback('Already owned.');
+    } else if (!canAfford) {
+      setShopFeedback('Not enough coins.');
+    } else {
+      setShopFeedback('Could not complete purchase.');
+    }
+    window.setTimeout(() => setShopFeedback(''), 4000);
     if (!ok) {
       setShopFlash(id);
       window.setTimeout(() => setShopFlash(null), 600);
@@ -65,7 +95,7 @@ export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.5 }}>
-      <ParticleBackground />
+      <ParticleBackground reduceMotion={progress.settings.reduceMotion} />
 
       <ModalShell
         open={modal === 'loadout'}
@@ -150,54 +180,196 @@ export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
       </ModalShell>
 
       <ModalShell
+        open={modal === 'stats'}
+        onClose={() => setModal(null)}
+        titleId="modal-stats-title"
+        title="Your stats">
+        <p className="mb-4 text-xs font-display text-gray-400">
+          Last 10 matches on this device (offline). Updates after each game ends.
+        </p>
+        {matchHistory.length === 0 ? (
+          <p className="text-center font-display text-gray-400">
+            No matches recorded yet. Play a standard or training match.
+          </p>
+        ) : (
+          <>
+            <div className="mb-6 grid grid-cols-3 gap-3 text-center font-display">
+              <GlassCard variant="sticker" className="p-3 border-neon-cyan/35">
+                <div className="text-2xl font-black text-neon-cyan">
+                  {statsSummary.wins}
+                </div>
+                <div className="text-[10px] uppercase text-gray-400">Wins</div>
+              </GlassCard>
+              <GlassCard variant="sticker" className="p-3 border-neon-magenta/35">
+                <div className="text-2xl font-black text-neon-magenta">
+                  {statsSummary.losses}
+                </div>
+                <div className="text-[10px] uppercase text-gray-400">Losses</div>
+              </GlassCard>
+              <GlassCard variant="sticker" className="p-3 border-neon-yellow/35">
+                <div className="text-2xl font-black text-neon-yellow">
+                  {statsSummary.avgAccuracy.toFixed(0)}%
+                </div>
+                <div className="text-[10px] uppercase text-gray-400">Avg acc</div>
+              </GlassCard>
+            </div>
+            <ul className="max-h-48 space-y-2 overflow-y-auto pr-1 font-display text-sm">
+              {matchHistory.map((e, i) => (
+                <li
+                  key={`${e.at}-${i}`}
+                  className="flex justify-between gap-2 rounded-lg border border-white/10 bg-dark-darker/80 px-3 py-2">
+                  <span className="text-gray-400">
+                    {new Date(e.at).toLocaleString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
+                  <span
+                    className={
+                      e.winner === 'player'
+                        ? 'text-neon-cyan font-bold'
+                        : 'text-neon-magenta font-bold'
+                    }>
+                    {e.winner === 'player' ? 'Win' : 'Loss'}
+                  </span>
+                  <span className="text-gray-500">
+                    {e.mode === 'practice' ? 'Train' : 'Rank'} · {e.playerAccuracy.toFixed(0)}%
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </ModalShell>
+
+      <ModalShell
         open={modal === 'shop'}
         onClose={() => setModal(null)}
         titleId="modal-shop-title"
         title="Shop">
-        <div className="grid gap-4 sm:grid-cols-2">
-          {SHOP_CATALOG.map((item) => {
-            const owned = progress.ownedShopItemIds.includes(item.id);
-            const equipped = progress.equippedSkinId === item.id;
-            const canBuy = !owned && progress.coins >= item.price;
-            return (
-              <div
-                key={item.id}
-                className={`rounded-2xl border-4 border-white/25 bg-dark-darker/80 p-4 shadow-[0_6px_0_0_rgba(0,0,0,0.35)] transition-transform ${
-                  shopFlash === item.id ? 'animate-pulse scale-95' : ''
-                }`}>
-                <div className="mb-2 text-3xl">{item.icon}</div>
-                <div className="font-display font-bold text-white">{item.name}</div>
-                <div className="text-sm text-neon-yellow font-display">
-                  {item.price} coins
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {!owned && (
-                    <button
-                      type="button"
-                      disabled={!canBuy}
-                      onClick={() => onBuy(item.id)}
-                      className="rounded-full border-4 border-neon-cyan bg-neon-cyan/20 px-4 py-2 text-sm font-display font-black text-neon-cyan shadow-[0_4px_0_0_rgba(0,240,255,0.4)] disabled:opacity-40 disabled:shadow-none">
-                      BUY
-                    </button>
+        {/* Feedback banner */}
+        <div
+          className={`mb-3 min-h-[2.75rem] rounded-xl border px-3 py-2 text-center text-sm font-display transition-colors ${
+            shopFeedback
+              ? 'border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan'
+              : 'border-transparent text-transparent'
+          }`}
+          role="status"
+          aria-live="polite">
+          {shopFeedback || '\u00a0'}
+        </div>
+
+        {/* Active accent preview strip */}
+        {(() => {
+          const activeSkin = SHOP_CATALOG.find(
+            (x) => x.id === progress.equippedSkinId
+          ) ?? SHOP_CATALOG[0];
+          return (
+            <div className="mb-4 flex items-center gap-3 rounded-xl border border-white/10 bg-dark-darker/60 px-3 py-2">
+              <span className="text-[10px] uppercase tracking-widest text-gray-500 shrink-0">
+                Your accent
+              </span>
+              <span
+                className="h-5 w-5 shrink-0 rounded-full border-2 border-white/30"
+                style={{ background: activeSkin?.accentHex }}
+              />
+              <span className="font-display text-sm font-bold text-white">
+                {activeSkin?.name}
+              </span>
+              <span className="ml-auto font-mono text-xs text-gray-400">
+                {activeSkin?.accentHex}
+              </span>
+            </div>
+          );
+        })()}
+
+        {/* Item grid */}
+        <div className="max-h-[55vh] overflow-y-auto pr-1">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {SHOP_CATALOG.map((item) => {
+              const owned = progress.ownedShopItemIds.includes(item.id);
+              const equipped = progress.equippedSkinId === item.id;
+              const canBuy = !owned && progress.coins >= item.price;
+              return (
+                <GlassCard
+                  key={item.id}
+                  variant="sticker"
+                  className={`relative flex flex-col gap-2 p-4 transition-transform ${
+                    shopFlash === item.id ? 'animate-pulse scale-95' : ''
+                  }`}
+                  style={
+                    equipped
+                      ? {
+                          outline: `2px solid ${item.accentHex}`,
+                          outlineOffset: '2px',
+                          boxShadow: `0 0 18px ${item.accentHex}55`
+                        }
+                      : undefined
+                  }>
+                  {/* Owned badge — top right */}
+                  {owned && !equipped && (
+                    <span className="absolute right-3 top-3 rounded-full border border-neon-lime/50 bg-neon-lime/10 px-2 py-0.5 text-[10px] font-display font-bold uppercase tracking-wide text-neon-lime">
+                      Owned
+                    </span>
                   )}
-                  {owned && (
-                    <>
-                      <span className="rounded-full border-2 border-white/30 px-3 py-1 text-xs font-display text-gray-300">
-                        Owned
-                      </span>
-                      <button
+                  {equipped && (
+                    <span
+                      className="absolute right-3 top-3 rounded-full px-2 py-0.5 text-[10px] font-display font-bold uppercase tracking-wide text-white"
+                      style={{
+                        background: `${item.accentHex}33`,
+                        border: `1px solid ${item.accentHex}88`
+                      }}>
+                      Equipped ✓
+                    </span>
+                  )}
+
+                  {/* Swatch + icon */}
+                  <div
+                    className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-white/20 text-xl shadow-inner"
+                    style={{ background: `${item.accentHex}40` }}>
+                    {item.icon}
+                  </div>
+
+                  {/* Name & price */}
+                  <div>
+                    <div className="font-display font-bold text-white leading-tight">
+                      {item.name}
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-1 font-display text-sm text-neon-yellow">
+                      <span>🪙</span>
+                      <span>{item.price.toLocaleString()}</span>
+                    </div>
+                  </div>
+
+                  {/* CTA */}
+                  <div className="mt-1">
+                    {!owned && (
+                      <NeonButton
                         type="button"
-                        disabled={equipped}
-                        onClick={() => progress.equipItem(item.id)}
-                        className="rounded-full border-4 border-neon-lime bg-neon-lime/20 px-4 py-2 text-sm font-display font-black text-neon-lime shadow-[0_4px_0_0_rgba(180,255,0,0.35)] disabled:opacity-50">
-                        {equipped ? 'Equipped' : 'Equip'}
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                        size="sm"
+                        variant="primary"
+                        disabled={!canBuy}
+                        className={!canBuy ? 'opacity-50 saturate-50' : ''}
+                        onClick={() => onBuy(item.id)}>
+                        Buy
+                      </NeonButton>
+                    )}
+                    {owned && !equipped && (
+                      <NeonButton
+                        type="button"
+                        size="sm"
+                        variant="success"
+                        onClick={() => progress.equipItem(item.id)}>
+                        Equip
+                      </NeonButton>
+                    )}
+                  </div>
+                </GlassCard>
+              );
+            })}
+          </div>
         </div>
       </ModalShell>
 
@@ -258,7 +430,7 @@ export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
                   masterVolume: Number(e.target.value) / 100
                 })
               }
-              className="w-full"
+              className="w-full rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan"
             />
           </div>
           <div>
@@ -275,7 +447,7 @@ export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
                   sfxVolume: Number(e.target.value) / 100
                 })
               }
-              className="w-full"
+              className="w-full rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan"
             />
           </div>
           <label className="flex cursor-pointer items-center gap-3">
@@ -285,9 +457,71 @@ export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
               onChange={(e) =>
                 progress.updateSettings({ reduceMotion: e.target.checked })
               }
+              className="rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan"
             />
             <span>Reduce motion</span>
           </label>
+          <div>
+            <label className="mb-1 block text-xs uppercase tracking-wider text-gray-400">
+              Display name
+            </label>
+            <input
+              type="text"
+              maxLength={24}
+              defaultValue={progress.playerName}
+              key={progress.playerName}
+              onBlur={(e) => progress.updatePlayerName(e.target.value)}
+              className="w-full rounded-xl border-2 border-white/25 bg-dark-darker/90 px-3 py-2 font-display text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs uppercase tracking-wider text-gray-400">
+              Standard match difficulty (AI)
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {(['casual', 'standard', 'hard'] as const).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => progress.updateSettings({ difficulty: d })}
+                  className={`rounded-full border-2 px-3 py-1 text-xs font-display font-black uppercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan ${
+                    progress.settings.difficulty === d
+                      ? 'border-neon-cyan bg-neon-cyan/20 text-neon-cyan'
+                      : 'border-white/25 text-gray-300 hover:border-white/50'
+                  }`}>
+                  {d}
+                </button>
+              ))}
+            </div>
+          </div>
+          <label className="flex cursor-pointer items-center gap-3">
+            <input
+              type="checkbox"
+              checked={progress.settings.musicEnabled}
+              onChange={(e) =>
+                progress.updateSettings({ musicEnabled: e.target.checked })
+              }
+              className="rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan"
+            />
+            <span>Ambient music (soft synth pad)</span>
+          </label>
+          <div>
+            <label className="mb-1 block text-xs uppercase tracking-wider text-gray-400">
+              Music volume
+            </label>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(progress.settings.musicVolume * 100)}
+              onChange={(e) =>
+                progress.updateSettings({
+                  musicVolume: Number(e.target.value) / 100
+                })
+              }
+              className="w-full rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan"
+            />
+          </div>
           <div>
             <label className="mb-1 block text-xs uppercase tracking-wider text-gray-400">
               Default aim sensitivity
@@ -303,7 +537,7 @@ export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
                   defaultAimSensitivity: Number(e.target.value) / 100
                 })
               }
-              className="w-full"
+              className="w-full rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan"
             />
           </div>
           <button
@@ -408,7 +642,7 @@ export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
         </motion.div>
 
         <motion.div
-          className="grid grid-cols-2 sm:grid-cols-3 gap-6 max-w-2xl w-full"
+          className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-4xl w-full"
           variants={containerVariants}
           initial="hidden"
           animate="show">
@@ -429,6 +663,12 @@ export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
             title="Roster"
             color="purple"
             onClick={() => setModal('loadout')}
+          />
+          <MenuTile
+            icon={<BarChart3 />}
+            title="Stats"
+            color="yellow"
+            onClick={() => setModal('stats')}
           />
         </motion.div>
       </div>

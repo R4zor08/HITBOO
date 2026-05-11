@@ -40,6 +40,38 @@ export const SHOP_CATALOG: ShopItem[] = [
     icon: '💗',
     type: 'cosmetic',
     accentHex: '#ff00e5'
+  },
+  {
+    id: 'skin_crimson',
+    name: 'Crimson Blaze',
+    price: 600,
+    icon: '🔥',
+    type: 'cosmetic',
+    accentHex: '#ff3b3b'
+  },
+  {
+    id: 'skin_violet',
+    name: 'Void Violet',
+    price: 1000,
+    icon: '💜',
+    type: 'cosmetic',
+    accentHex: '#9d00ff'
+  },
+  {
+    id: 'skin_ice',
+    name: 'Arctic Ice',
+    price: 750,
+    icon: '❄️',
+    type: 'cosmetic',
+    accentHex: '#a0f4ff'
+  },
+  {
+    id: 'skin_solar',
+    name: 'Solar Flare',
+    price: 1500,
+    icon: '⭐',
+    type: 'cosmetic',
+    accentHex: '#ffaa00'
   }
 ];
 

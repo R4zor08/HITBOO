@@ -40,6 +40,7 @@ export function VictoryScreen({
   const [xpProgress, setXpProgress] = useState(xpProgressPercent(progress.playerXp));
   const [coins, setCoins] = useState(0);
   const [xpGain, setXpGain] = useState(0);
+  const [victoryRank, setVictoryRank] = useState(progress.playerRank);
   const rewardedRef = useRef(false);
 
   const safeResult = useMemo<MatchResult>(
@@ -74,6 +75,8 @@ export function VictoryScreen({
 
     const reward: MatchRewardResult = progress.applyMatchRewards(safeResult);
     setXpGain(reward.xpAwarded);
+    setVictoryRank(reward.newRank);
+    setXpProgress(xpProgressPercent(reward.previousPlayerXp));
     const duration = 1200;
     const steps = 30;
     let currentStep = 0;
@@ -84,8 +87,13 @@ export function VictoryScreen({
         clearInterval(timer);
       }
     }, duration / steps);
-    setTimeout(() => setXpProgress(xpProgressPercent(progress.playerXp + reward.xpAwarded)), 400);
-    return () => clearInterval(timer);
+    const t = window.setTimeout(() => {
+      setXpProgress(xpProgressPercent(reward.newPlayerXp));
+    }, 400);
+    return () => {
+      clearInterval(timer);
+      window.clearTimeout(t);
+    };
   }, [progress, safeResult]);
 
   const titleColor = isWin
@@ -107,7 +115,7 @@ export function VictoryScreen({
       transition={{
         duration: 0.8
       }}>
-      <ParticleBackground />
+      <ParticleBackground reduceMotion={progress.settings.reduceMotion} />
 
       <div
         className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full blur-[100px] opacity-20 pointer-events-none ${isWin ? 'bg-neon-cyan' : 'bg-neon-magenta'}`}
@@ -215,7 +223,7 @@ export function VictoryScreen({
                 </div>
                 <ProgressBar progress={xpProgress} color="bg-neon-cyan" height="h-4" />
                 <div className="text-right text-xs text-gray-500 mt-1">
-                  Rank {progress.playerRank} ({Math.round(xpProgress)}%)
+                  Rank {victoryRank} ({Math.round(xpProgress)}%)
                 </div>
               </div>
 

@@ -35,7 +35,7 @@ export function NeonButton({
   return (
     <motion.button
       disabled={disabled}
-      className={`border-4 uppercase font-display font-black tracking-wide text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] transition-all duration-200 backdrop-blur-sm disabled:text-white/75 disabled:opacity-45 disabled:cursor-not-allowed disabled:shadow-none ${variants[variant]} ${sizes[size]} ${className}`}
+      className={`border-4 uppercase font-display font-black tracking-wide text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] transition-all duration-200 backdrop-blur-sm outline-none focus-visible:ring-4 focus-visible:ring-neon-cyan/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0614] disabled:text-white/75 disabled:opacity-45 disabled:cursor-not-allowed disabled:shadow-none ${variants[variant]} ${sizes[size]} ${className}`}
       whileHover={
         disabled
           ? {}

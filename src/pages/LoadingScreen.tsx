@@ -3,10 +3,14 @@ import { motion } from 'framer-motion';
 import { CrosshairIcon } from 'lucide-react';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { ParticleBackground } from '../components/ui/ParticleBackground';
+import { useHitBowProgress } from '../context/HitBowProgressContext';
+
 interface LoadingScreenProps {
   onComplete: () => void;
 }
 export function LoadingScreen({ onComplete }: LoadingScreenProps) {
+  const { settings } = useHitBowProgress();
+  const reduceMotion = settings.reduceMotion;
   const [progress, setProgress] = useState(0);
   useEffect(() => {
     const duration = 2500; // 2.5s loading simulation
@@ -40,27 +44,34 @@ export function LoadingScreen({ onComplete }: LoadingScreenProps) {
       transition={{
         duration: 0.8
       }}>
-      
-      <ParticleBackground />
+      <ParticleBackground reduceMotion={reduceMotion} />
 
       <div className="z-10 flex flex-col items-center max-w-md w-full px-8">
         <motion.div
-          animate={{
-            rotate: 360,
-            scale: [1, 1.1, 1]
-          }}
-          transition={{
-            rotate: {
-              duration: 8,
-              repeat: Infinity,
-              ease: 'linear'
-            },
-            scale: {
-              duration: 2,
-              repeat: Infinity,
-              ease: 'easeInOut'
-            }
-          }}
+          animate={
+            reduceMotion
+              ? { rotate: 0, scale: 1 }
+              : {
+                  rotate: 360,
+                  scale: [1, 1.1, 1]
+                }
+          }
+          transition={
+            reduceMotion
+              ? { duration: 0 }
+              : {
+                  rotate: {
+                    duration: 8,
+                    repeat: Infinity,
+                    ease: 'linear'
+                  },
+                  scale: {
+                    duration: 2,
+                    repeat: Infinity,
+                    ease: 'easeInOut'
+                  }
+                }
+          }
           className="mb-8 text-neon-cyan drop-shadow-[0_0_15px_rgba(0,240,255,0.8)]">
           
           <CrosshairIcon size={80} strokeWidth={1.5} />

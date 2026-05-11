@@ -47,8 +47,12 @@ export function GlassCard({
 
   return (
     <motion.div
+      tabIndex={interactive ? 0 : undefined}
+      role={interactive ? 'button' : undefined}
       className={`transition-colors duration-300 ${baseSticker} ${
-        interactive ? `cursor-pointer ${glowClasses[glowColor]}` : ''
+        interactive
+          ? `cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0614] ${glowClasses[glowColor]}`
+          : ''
       } ${className}`}
       whileHover={interactive ? hoverMotion : {}}
       whileTap={interactive ? tapMotion : {}}

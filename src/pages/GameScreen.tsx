@@ -6,7 +6,8 @@ import {
   MinimizeIcon,
   WindIcon,
   XIcon,
-  LogOutIcon
+  LogOutIcon,
+  CircleHelpIcon
 } from 'lucide-react';
 import {
   Battlefield,
@@ -28,9 +29,10 @@ import {
   findBestAim,
   sampleTrajectoryPoints
 } from '../game/artilleryPhysics';
-import { ENEMY_WEAPON, WEAPON_PRESETS } from '../game/weapons';
+import { getEnemyWeapon, WEAPON_PRESETS } from '../game/weapons';
 import { playBlip, playHit, playMiss } from '../game/gameAudio';
 import type { MatchResult } from '../game/matchResult';
+import { STORAGE } from '../game/storageKeys';
 
 if (!WEAPON_PRESETS.length) {
   throw new Error('WEAPON_PRESETS must not be empty');
@@ -75,7 +77,42 @@ export function GameScreen({
   useEffect(() => {
     setSelectedWeaponId(progress.equippedWeaponId);
   }, [progress.equippedWeaponId]);
-  const enemyWeapon = ENEMY_WEAPON;
+
+  const enemyWeapon = useMemo(
+    () => getEnemyWeapon(progress.settings.difficulty),
+    [progress.settings.difficulty]
+  );
+
+  const enemyAimError = useMemo(() => {
+    switch (progress.settings.difficulty) {
+      case 'casual':
+        return { power: 14, angle: 9 };
+      case 'hard':
+        return { power: 6, angle: 5 };
+      default:
+        return { power: 10, angle: 7 };
+    }
+  }, [progress.settings.difficulty]);
+
+  const [showMatchTips, setShowMatchTips] = useState(false);
+
+  useEffect(() => {
+    setShowMatchTips(
+      localStorage.getItem(STORAGE.matchOnboardingDismissed) !== '1'
+    );
+  }, []);
+
+  const dismissMatchTips = useCallback(() => {
+    try {
+      localStorage.setItem(STORAGE.matchOnboardingDismissed, '1');
+    } catch {
+      /* ignore */
+    }
+    setShowMatchTips(false);
+  }, []);
+
+  const showMatchTipsRef = useRef(showMatchTips);
+  showMatchTipsRef.current = showMatchTips;
 
   const [isAiming, setIsAiming] = useState(false);
   const [aimAngle, setAimAngle] = useState(45);
@@ -164,6 +201,56 @@ export function GameScreen({
     wind.direction
   ]);
 
+  /** 0–1 charge tint for aim box (cyan → magenta). */
+  const aimChargeBlend = useMemo(() => {
+    const t = aimPower > 5 ? Math.min(1, (aimPower - 5) / 95) : 0;
+    if (t <= 0) return null;
+    const r = Math.round(255 * t);
+    const g = Math.round(240 * (1 - t));
+    const b = Math.round(255 * (1 - t) + 229 * t);
+    return { t, r, g, b };
+  }, [aimPower]);
+
+  const aimAreaStyle = useMemo((): React.CSSProperties => {
+    const base =
+      'inset 0 0 40px rgba(0,240,255,0.12), 0 0 20px rgba(0,0,0,0.3)';
+    if (!aimChargeBlend) return { boxShadow: base };
+    const { r, g, b } = aimChargeBlend;
+    return {
+      boxShadow: `${base}, inset 0 0 48px rgba(${r},${g},${b},0.22), 0 0 28px rgba(${r},${g},${b},0.42)`
+    };
+  }, [aimChargeBlend]);
+
+  const windArrowMotion = useMemo(() => {
+    if (reduceMotion) {
+      return {
+        animate: { x: 0 },
+        transition: { duration: 0 }
+      };
+    }
+    const duration = Math.max(
+      0.45,
+      Math.min(1.2, 1.25 - wind.speed * 0.035)
+    );
+    const amp = Math.min(10, 4 + wind.speed * 0.25);
+    const x =
+      wind.direction === 'right'
+        ? [0, amp, 0]
+        : [0, -amp, 0];
+    return {
+      animate: { x },
+      transition: {
+        duration,
+        repeat: Infinity,
+        ease: 'easeInOut'
+      }
+    };
+  }, [reduceMotion, wind.speed, wind.direction]);
+
+  const aimDecorLit = isAiming || aimPower > 5;
+  const aimDecorTransition =
+    reduceMotion ? '' : 'transition-opacity duration-200 ease-out';
+
   useEffect(() => {
     const onFs = () =>
       setFullscreen(!!document.fullscreenElement);
@@ -228,7 +315,12 @@ export function GameScreen({
       targetX: P1_POS.x,
       targetY: P1_POS.y
     });
-    const err = applyAimError(sol.power, sol.angleDeg, 10, 7);
+    const err = applyAimError(
+      sol.power,
+      sol.angleDeg,
+      enemyAimError.power,
+      enemyAimError.angle
+    );
     setTriggerFire({
       power: err.power,
       angle: err.angleDeg,
@@ -239,12 +331,22 @@ export function GameScreen({
     });
     updateMatchStats((prev) => ({ ...prev, enemyShots: prev.enemyShots + 1 }));
     playBlip(220, 0.06, audioMuted);
-  }, [enemyWeapon, audioMuted, updateMatchStats]);
+  }, [enemyWeapon, enemyAimError, audioMuted, updateMatchStats]);
 
   const advanceWindAndTurn = useCallback(
     (shooterWasPlayer: boolean) => {
+      const tier = progress.settings.difficulty;
+      let windMin = 2;
+      let windSpan = 17;
+      if (tier === 'casual') {
+        windMin = 0;
+        windSpan = 15;
+      } else if (tier === 'hard') {
+        windMin = 5;
+        windSpan = 18;
+      }
       const newWind = {
-        speed: Math.floor(Math.random() * 20),
+        speed: Math.floor(Math.random() * windSpan) + windMin,
         direction: (Math.random() > 0.5 ? 'right' : 'left') as
           | 'left'
           | 'right'
@@ -256,7 +358,7 @@ export function GameScreen({
         setTimeout(() => scheduleEnemyShot(), 2000);
       }
     },
-    [scheduleEnemyShot]
+    [scheduleEnemyShot, progress.settings.difficulty]
   );
 
   const handleShotResult = useCallback(
@@ -324,8 +426,13 @@ export function GameScreen({
     ]
   );
 
-  const handlePointerDown = (e: React.PointerEvent) => {
-    if (!isPlayerTurn) return;
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isPlayerTurn || showMatchTipsRef.current) return;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
     setIsAiming(true);
     updateAim(e);
   };
@@ -347,13 +454,22 @@ export function GameScreen({
     setAimAngle(angle);
     setAimPower(power);
   };
-  const handlePointerUp = () => {
+  const endAim = (e?: React.PointerEvent<HTMLDivElement>) => {
+    if (e?.currentTarget && e.pointerId != null) {
+      try {
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        }
+      } catch {
+        /* ignore */
+      }
+    }
     if (!isAiming || !isPlayerTurn) return;
     setIsAiming(false);
   };
 
   const handleFire = () => {
-    if (!isPlayerTurn || aimPower < 5) return;
+    if (!isPlayerTurn || aimPower < 5 || showMatchTipsRef.current) return;
     updateMatchStats((prev) => ({ ...prev, playerShots: prev.playerShots + 1 }));
     setTriggerFire({
       power: aimPower,
@@ -366,6 +482,56 @@ export function GameScreen({
     setIsAiming(false);
     playBlip(440, 0.08, audioMuted);
   };
+
+  const handleFireRef = useRef(handleFire);
+  handleFireRef.current = handleFire;
+
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      if (!isPlayerTurnRef.current || settingsOpen || showMatchTipsRef.current)
+        return;
+      const t = ev.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+
+      const k = ev.key;
+      if (
+        k === 'ArrowUp' ||
+        k === 'ArrowDown' ||
+        k === 'ArrowLeft' ||
+        k === 'ArrowRight' ||
+        k === ' ' ||
+        k === 'Enter'
+      ) {
+        ev.preventDefault();
+      }
+
+      if (k === 'ArrowUp' || k === 'w' || k === 'W') {
+        setAimPower((p) => Math.min(100, p + 4));
+      } else if (k === 'ArrowDown' || k === 's' || k === 'S') {
+        setAimPower((p) => Math.max(0, p - 4));
+      } else if (k === 'ArrowLeft' || k === 'a' || k === 'A') {
+        setAimAngle((a) => Math.max(0, a - 2));
+      } else if (k === 'ArrowRight' || k === 'd' || k === 'D') {
+        setAimAngle((a) => Math.min(90, a + 2));
+      } else if (k === ' ' || k === 'Enter') {
+        handleFireRef.current();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [settingsOpen]);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setSettingsOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [settingsOpen]);
 
   const toggleFullscreen = async () => {
     try {
@@ -437,6 +603,47 @@ export function GameScreen({
         </div>
       )}
 
+      {showMatchTips && (
+        <div className="absolute inset-0 z-[25] flex items-start justify-center pt-4 sm:pt-8 px-4 pointer-events-none">
+          <GlassCard
+            variant="sticker"
+            className="max-w-lg w-full pointer-events-auto border-neon-cyan/45 p-5 space-y-4 shadow-[0_0_30px_rgba(0,240,255,0.15)]">
+            <h2 className="font-display text-lg font-black text-neon-cyan tracking-wide">
+              Quick briefing
+            </h2>
+            <ul className="text-sm text-gray-200 font-display space-y-2 list-disc pl-4 marker:text-neon-cyan">
+              <li>
+                This match is{' '}
+                <strong className="text-white">offline vs AI</strong> — no
+                real PvP queue.
+              </li>
+              <li>
+                Drag inside the aim box for angle and power, then tap{' '}
+                <strong className="text-white">FIRE</strong> (needs a little
+                power).
+              </li>
+              <li>Wind shifts after each shot — watch the HUD arrow.</li>
+              <li>
+                Standard win: bring the rival to{' '}
+                <strong className="text-white">0 HP</strong>.
+              </li>
+              {practice ? (
+                <li>
+                  Training dummy{' '}
+                  <strong className="text-neon-yellow">
+                    never reaches 0 HP
+                  </strong>{' '}
+                  so you can drill shots safely.
+                </li>
+              ) : null}
+            </ul>
+            <NeonButton size="sm" variant="primary" onClick={dismissMatchTips}>
+              Got it
+            </NeonButton>
+          </GlassCard>
+        </div>
+      )}
+
       <div className="absolute inset-0 pointer-events-none z-10 flex flex-col justify-between p-8 gap-8">
         <div className="flex justify-between items-start gap-8">
           <GlassCard variant="sticker" className="p-4 md:p-5 flex items-center gap-4 w-[18rem] max-w-[42vw] pointer-events-auto border-neon-cyan/35 bg-dark-card/80 shadow-[0_0_20px_rgba(0,240,255,0.12)]">
@@ -468,16 +675,30 @@ export function GameScreen({
 
           <div className="flex flex-col items-center gap-4">
             {practice && onExitMatch && (
-              <GlassCard
-                variant="sticker"
-                interactive
-                className="px-4 py-2 flex items-center gap-2 pointer-events-auto border-neon-yellow/40 min-h-[44px]"
-                onClick={() => onExitMatch()}>
-                <LogOutIcon size={18} className="text-neon-yellow" />
-                <span className="font-display text-xs font-black tracking-wide text-white">
-                  EXIT PRACTICE
-                </span>
-              </GlassCard>
+              <div className="flex flex-col sm:flex-row gap-2 items-center pointer-events-auto">
+                <GlassCard
+                  variant="sticker"
+                  interactive
+                  className="px-4 py-2 flex items-center gap-2 border-neon-yellow/40 min-h-[44px]"
+                  onClick={() => onExitMatch()}>
+                  <LogOutIcon size={18} className="text-neon-yellow" />
+                  <span className="font-display text-xs font-black tracking-wide text-white">
+                    EXIT PRACTICE
+                  </span>
+                </GlassCard>
+                <GlassCard
+                  variant="sticker"
+                  interactive
+                  className="px-4 py-2 flex items-center gap-2 border-neon-lime/40 min-h-[44px]"
+                  onClick={() => {
+                    setEnemyHp(100);
+                    setPlayerHp(100);
+                  }}>
+                  <span className="font-display text-xs font-black tracking-wide text-neon-lime">
+                    RESET DUMMY HP
+                  </span>
+                </GlassCard>
+              </div>
             )}
             <AnimatePresence mode="wait">
               <motion.div
@@ -507,18 +728,8 @@ export function GameScreen({
                 {wind.speed}
               </span>
               <motion.div
-                animate={
-                  reduceMotion
-                    ? { x: 0 }
-                    : {
-                        x: wind.direction === 'right' ? [0, 5, 0] : [0, -5, 0]
-                      }
-                }
-                transition={
-                  reduceMotion
-                    ? { duration: 0 }
-                    : { duration: 1, repeat: Infinity }
-                }>
+                animate={windArrowMotion.animate}
+                transition={windArrowMotion.transition}>
                 {wind.direction === 'right' ? '→' : '←'}
               </motion.div>
             </GlassCard>
@@ -571,42 +782,151 @@ export function GameScreen({
                   y: 100,
                   opacity: 0
                 }}
-                className="flex flex-col items-center gap-6 pointer-events-auto w-full max-w-2xl mx-auto px-4">
-                <div className="flex flex-wrap gap-3 w-full justify-center max-h-52 md:max-h-64 overflow-y-auto overflow-x-hidden pb-2 pr-1">
-                  {WEAPON_PRESETS.map((w: Weapon) => (
-                    <GlassCard
-                      key={w.id}
-                      variant="sticker"
-                      interactive
-                      glowColor={
-                        selectedWeaponId === w.id ? 'cyan' : 'none'
-                      }
-                      className={`px-3 py-2 flex items-center gap-2 shrink-0 cursor-pointer border ${selectedWeaponId === w.id ? 'ring-2 ring-neon-cyan border-neon-cyan/50' : 'border-white/20'}`}
-                      onClick={() => {
-                        setSelectedWeaponId(w.id);
-                        progress.setEquippedWeaponId(w.id);
-                      }}>
-                      <span className="text-lg">{w.icon}</span>
-                      <span className="font-display text-xs text-gray-200">
-                        {w.name}
-                      </span>
-                    </GlassCard>
-                  ))}
+                className="flex flex-col items-center gap-4 pointer-events-auto w-full max-w-2xl mx-auto px-4">
+                <div className="w-full space-y-1">
+                  <p className="text-center text-[10px] font-display uppercase tracking-[0.25em] text-gray-500">
+                    LOADOUT
+                  </p>
+                  <div className="relative w-full">
+                    <div
+                      className="pointer-events-none absolute left-0 top-0 bottom-0 z-10 w-10 bg-gradient-to-r from-[#0f0622] to-transparent"
+                      aria-hidden
+                    />
+                    <div
+                      className="pointer-events-none absolute right-0 top-0 bottom-0 z-10 w-10 bg-gradient-to-l from-[#0f0622] to-transparent"
+                      aria-hidden
+                    />
+                    <div className="relative z-0 flex snap-x snap-mandatory flex-nowrap gap-1.5 overflow-x-auto overflow-y-visible scroll-smooth px-2 py-1 pb-1 [-webkit-overflow-scrolling:touch]">
+                      {WEAPON_PRESETS.map((w: Weapon) => {
+                        const selected = selectedWeaponId === w.id;
+                        const card = (
+                          <GlassCard
+                            variant="sticker"
+                            interactive
+                            glowColor={selected ? 'cyan' : 'none'}
+                            className={`flex h-full shrink-0 cursor-pointer items-center gap-1.5 border px-2 py-1.5 ${
+                              selected
+                                ? 'ring-2 ring-neon-cyan border-neon-cyan/50'
+                                : 'border-white/20'
+                            }`}
+                            onClick={() => {
+                              setSelectedWeaponId(w.id);
+                              progress.setEquippedWeaponId(w.id);
+                            }}>
+                            <span className="text-base leading-none">
+                              {w.icon}
+                            </span>
+                            <span className="font-display text-[11px] leading-tight text-gray-200">
+                              {w.name}
+                            </span>
+                          </GlassCard>
+                        );
+                        return (
+                          <div
+                            key={w.id}
+                            className="snap-start shrink-0 max-w-[9.5rem]">
+                            {selected && !reduceMotion ? (
+                              <motion.div
+                                className="rounded-3xl"
+                                animate={{
+                                  boxShadow: [
+                                    '0 0 0 rgba(0,240,255,0)',
+                                    '0 0 22px rgba(0,240,255,0.5)',
+                                    '0 0 0 rgba(0,240,255,0)'
+                                  ]
+                                }}
+                                transition={{
+                                  duration: 2.5,
+                                  repeat: Infinity,
+                                  ease: 'easeInOut'
+                                }}>
+                                {card}
+                              </motion.div>
+                            ) : (
+                              card
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
 
-                <div
+                <div className="w-full space-y-1">
+                  <p className="text-center text-[10px] font-display uppercase tracking-[0.25em] text-gray-500">
+                    AIM
+                  </p>
+                  <div
                   ref={aimAreaRef}
-                  className="w-full h-48 border-[3px] border-dashed border-neon-cyan/45 rounded-2xl relative overflow-hidden bg-black/45 backdrop-blur-md cursor-crosshair touch-none shadow-[inset_0_0_40px_rgba(0,240,255,0.12),0_0_20px_rgba(0,0,0,0.3)]"
+                  style={aimAreaStyle}
+                  className="relative h-48 w-full cursor-crosshair touch-none overflow-hidden rounded-2xl border-[3px] border-dashed border-neon-cyan/45 bg-black/45 backdrop-blur-md"
                   onPointerDown={handlePointerDown}
                   onPointerMove={handlePointerMove}
-                  onPointerUp={handlePointerUp}
-                  onPointerLeave={handlePointerUp}>
-                  <div className="absolute inset-0 flex items-center justify-center text-white/45 font-display text-sm tracking-wide pointer-events-none">
-                    DRAG HERE TO AIM
+                  onPointerUp={endAim}
+                  onPointerCancel={endAim}
+                  onPointerLeave={endAim}>
+                  <div
+                    className={`pointer-events-none absolute inset-0 rounded-2xl ${aimDecorTransition} ${
+                      aimDecorLit ? 'opacity-100' : 'opacity-[0.38]'
+                    }`}>
+                    <div
+                      className="pointer-events-none absolute inset-0 opacity-[0.07]"
+                      style={{
+                        backgroundImage: `
+                        linear-gradient(rgba(0,240,255,0.5) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(0,240,255,0.5) 1px, transparent 1px)
+                      `,
+                        backgroundSize: '14px 14px'
+                      }}
+                      aria-hidden
+                    />
+                    <div
+                      className="pointer-events-none absolute inset-0 rounded-2xl bg-[radial-gradient(ellipse_at_center,transparent_42%,rgba(0,0,0,0.55)_100%)]"
+                      aria-hidden
+                    />
+                    <div
+                      className="pointer-events-none absolute left-3 top-3 h-5 w-5 border-l-2 border-t-2 border-neon-cyan/55"
+                      aria-hidden
+                    />
+                    <div
+                      className="pointer-events-none absolute right-3 top-3 h-5 w-5 border-r-2 border-t-2 border-neon-cyan/55"
+                      aria-hidden
+                    />
+                    <div
+                      className="pointer-events-none absolute bottom-3 left-3 h-5 w-5 border-b-2 border-l-2 border-neon-magenta/45"
+                      aria-hidden
+                    />
+                    <div
+                      className="pointer-events-none absolute bottom-3 right-3 h-5 w-5 border-b-2 border-r-2 border-neon-magenta/45"
+                      aria-hidden
+                    />
+                  </div>
+                  {aimChargeBlend ? (
+                    <div
+                      className="pointer-events-none absolute inset-0 rounded-2xl"
+                      style={{
+                        background: `radial-gradient(ellipse 85% 75% at 50% 88%, rgba(${aimChargeBlend.r},${aimChargeBlend.g},${aimChargeBlend.b},0.38), transparent 70%)`
+                      }}
+                      aria-hidden
+                    />
+                  ) : null}
+                  <div className="pointer-events-none relative z-10 flex h-full flex-col items-center justify-center gap-1 px-2 text-center font-display text-xs tracking-wide text-white/60 sm:text-sm">
+                    <span>DRAG TO AIM · TAP OUTSIDE TO ADJUST</span>
+                    <span className="max-w-[22rem] text-[10px] text-gray-200 sm:text-xs">
+                      <span className="md:hidden">
+                        <span className="block">
+                          Keys: ↑↓ / W S power · ←→ / A D angle
+                        </span>
+                        <span className="block">Space / Enter fire</span>
+                      </span>
+                      <span className="hidden md:inline">
+                        Keys: ↑↓ / W S power · ←→ / A D angle · Space / Enter fire
+                      </span>
+                    </span>
                   </div>
                   {previewPoints.length > 1 && (
                     <svg
-                      className="absolute inset-0 w-full h-full pointer-events-none"
+                      className="pointer-events-none absolute inset-0 z-[5] h-full w-full"
                       viewBox="0 0 100 100"
                       preserveAspectRatio="none">
                       <polyline
@@ -619,6 +939,7 @@ export function GameScreen({
                       />
                     </svg>
                   )}
+                </div>
                 </div>
 
                 <div className="flex items-center gap-4 w-full border-4 border-neon-cyan/30 bg-dark-card/95 p-3 rounded-3xl shadow-[0_8px_0_0_rgba(0,0,0,0.35),0_0_20px_rgba(0,240,255,0.12)]">
@@ -633,17 +954,47 @@ export function GameScreen({
                         aimPower > 80 ? 'bg-neon-magenta' : 'bg-neon-cyan'
                       }
                       height="h-4"
+                      variant="arcade"
+                      reduceMotion={reduceMotion}
                     />
                   </div>
 
-                  <NeonButton
-                    type="button"
-                    size="md"
-                    variant="primary"
-                    onClick={handleFire}
-                    disabled={aimPower <= 5}>
-                    FIRE
-                  </NeonButton>
+                  <div className="group relative z-0 inline-flex">
+                    {aimPower > 5 && !reduceMotion ? (
+                      <motion.div
+                        className="pointer-events-none absolute -inset-2 -z-10 rounded-full bg-neon-cyan/30 blur-md group-hover:bg-neon-cyan/45 group-hover:blur-lg group-focus-within:bg-neon-cyan/45"
+                        animate={{
+                          opacity: [0.32, 0.78, 0.32],
+                          scale: [1, 1.08, 1]
+                        }}
+                        transition={{
+                          duration: 2.6,
+                          repeat: Infinity,
+                          ease: 'easeInOut'
+                        }}
+                        aria-hidden
+                      />
+                    ) : null}
+                    {aimPower > 5 && reduceMotion ? (
+                      <div
+                        className="pointer-events-none absolute -inset-1 -z-10 rounded-full ring-2 ring-neon-cyan/35"
+                        aria-hidden
+                      />
+                    ) : null}
+                    <NeonButton
+                      type="button"
+                      size="md"
+                      variant="primary"
+                      className={`relative transition-shadow group-hover:shadow-[0_0_22px_rgba(0,240,255,0.55)] group-focus-visible:shadow-[0_0_22px_rgba(0,240,255,0.55)] ${
+                        aimPower <= 5
+                          ? 'opacity-50 saturate-50 !shadow-none'
+                          : ''
+                      }`}
+                      onClick={handleFire}
+                      disabled={aimPower <= 5}>
+                      FIRE
+                    </NeonButton>
+                  </div>
                 </div>
               </motion.div>
             )}
@@ -704,6 +1055,59 @@ export function GameScreen({
                       </span>
                     </label>
 
+                    <div>
+                      <span className="text-xs text-gray-400 font-display block mb-2">
+                        AI difficulty (standard matches)
+                      </span>
+                      <div className="flex gap-2 flex-wrap">
+                        {(['casual', 'standard', 'hard'] as const).map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={() =>
+                              progress.updateSettings({ difficulty: d })
+                            }
+                            className={`rounded-full border-2 px-3 py-1 text-xs font-display font-bold uppercase ${
+                              progress.settings.difficulty === d
+                                ? 'border-neon-cyan bg-neon-cyan/20 text-neon-cyan'
+                                : 'border-white/25 text-gray-300 hover:border-white/50'
+                            }`}>
+                            {d}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={progress.settings.musicEnabled}
+                        onChange={(e) =>
+                          progress.updateSettings({
+                            musicEnabled: e.target.checked
+                          })
+                        }
+                      />
+                      <span className="text-sm font-display">Ambient music</span>
+                    </label>
+                    <div>
+                      <label className="text-xs text-gray-400 font-display block mb-1">
+                        Music volume
+                      </label>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={Math.round(progress.settings.musicVolume * 100)}
+                        onChange={(e) =>
+                          progress.updateSettings({
+                            musicVolume: Number(e.target.value) / 100
+                          })
+                        }
+                        className="w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan rounded"
+                      />
+                    </div>
+
                     <button
                       type="button"
                       onClick={() => {
@@ -718,6 +1122,14 @@ export function GameScreen({
               )}
             </AnimatePresence>
 
+            <GlassCard
+              variant="sticker"
+              interactive
+              className="min-h-[44px] min-w-[44px] p-3 rounded-full flex items-center justify-center"
+              onClick={() => setShowMatchTips(true)}
+              aria-label="How to play">
+              <CircleHelpIcon className="text-neon-cyan" size={22} />
+            </GlassCard>
             <GlassCard
               variant="sticker"
               interactive

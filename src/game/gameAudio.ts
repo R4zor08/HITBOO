@@ -28,6 +28,11 @@ function getCtx(): AudioContext | null {
   return audioCtx;
 }
 
+/** Shared context for optional ambient layer (see `gameMusic.ts`). */
+export function getAudioContext(): AudioContext | null {
+  return getCtx();
+}
+
 export function playBlip(
   freq: number,
   duration: number,

@@ -60,7 +60,7 @@ export function MatchmakingScreen({
         duration: 0.5
       }}>
       
-      <ParticleBackground />
+      <ParticleBackground reduceMotion={progress.settings.reduceMotion} />
 
       {status === 'searching' ?
       <motion.div
@@ -112,13 +112,13 @@ export function MatchmakingScreen({
             </div>
           </div>
           <h2 className="text-2xl font-display font-bold text-neon-cyan tracking-widest animate-pulse">
-            SEARCHING FOR OPPONENT...
+            PAIRING WITH AI…
           </h2>
           <p className="text-gray-400 mt-2 font-display text-sm">
-            Estimated wait: 0:03
+            Offline — simulated wait, no live lobby.
           </p>
           <p className="text-gray-500 mt-1 font-display text-xs uppercase tracking-wider">
-            Practice queue: bot-backed matchmaking
+            You vs a local bot, not real PvP
           </p>
           <NeonButton
             variant="danger"
@@ -137,10 +137,11 @@ export function MatchmakingScreen({
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}>
         <h2 className="text-2xl font-display font-black text-neon-magenta tracking-wide">
-          MATCHMAKING ERROR
+          OFFLINE HICCUP
         </h2>
         <p className="text-gray-300 mt-2 font-display">
-          Queue sync timed out. Retry to continue.
+          Could not finish the fake queue step. Retry or head back — still no
+          real matchmaking server.
         </p>
         <div className="mt-6 flex gap-3">
           <NeonButton
@@ -217,6 +218,9 @@ export function MatchmakingScreen({
               <h3 className="text-3xl font-display font-bold text-white text-glow-cyan">
                 {progress.playerName}
               </h3>
+              <p className="text-xs text-gray-400 font-display mt-1 uppercase tracking-wider">
+                You · saved locally
+              </p>
               <p className="text-neon-cyan font-bold mt-1">
                 Rank {progress.playerRank}
               </p>
@@ -272,6 +276,9 @@ export function MatchmakingScreen({
               <h3 className="text-3xl font-display font-bold text-white text-glow-magenta">
                 {enemyName}
               </h3>
+              <p className="text-xs text-gray-400 font-display mt-1 uppercase tracking-wider">
+                AI rival · offline
+              </p>
               <p className="text-neon-magenta font-bold mt-1">
                 Rank {enemyRank}
               </p>

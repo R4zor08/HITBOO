@@ -22,4 +22,8 @@ export interface MatchRewardResult {
   coinsAwarded: number;
   xpAwarded: number;
   newRank: number;
+  /** Total XP after this match (for UI without double-counting context). */
+  newPlayerXp: number;
+  /** Total XP before this match was applied. */
+  previousPlayerXp: number;
 }

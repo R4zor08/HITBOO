@@ -1,12 +1,22 @@
 import React, { useEffect, useRef } from 'react';
-export function ParticleBackground() {
+
+type ParticleBackgroundProps = {
+  /** When true, draw a static frame once (no animation loop). */
+  reduceMotion?: boolean;
+};
+
+export function ParticleBackground({
+  reduceMotion = false
+}: ParticleBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    let animationFrameId: number;
+
+    let animationFrameId = 0;
     let particles: Array<{
       x: number;
       y: number;
@@ -17,14 +27,12 @@ export function ParticleBackground() {
       color: string;
     }> = [];
     const colors = ['#00f0ff', '#ff00e5', '#8b5cf6', '#ffffff'];
-    const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-      initParticles();
-    };
+
     const initParticles = () => {
       particles = [];
-      const numParticles = Math.floor(canvas.width * canvas.height / 15000);
+      const numParticles = Math.floor(
+        (canvas.width * canvas.height) / 15000
+      );
       for (let i = 0; i < numParticles; i++) {
         particles.push({
           x: Math.random() * canvas.width,
@@ -37,6 +45,33 @@ export function ParticleBackground() {
         });
       }
     };
+
+    const drawStaticFrame = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      particles.forEach((p) => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.alpha;
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+    };
+
+    const resizeStatic = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      initParticles();
+      drawStaticFrame();
+    };
+
+    const resizeAnimated = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      initParticles();
+    };
+
     const draw = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       particles.forEach((p) => {
@@ -51,7 +86,6 @@ export function ParticleBackground() {
         ctx.fillStyle = p.color;
         ctx.globalAlpha = p.alpha;
         ctx.fill();
-        // Add subtle glow
         ctx.shadowBlur = 10;
         ctx.shadowColor = p.color;
       });
@@ -59,18 +93,28 @@ export function ParticleBackground() {
       ctx.shadowBlur = 0;
       animationFrameId = requestAnimationFrame(draw);
     };
-    window.addEventListener('resize', resize);
-    resize();
+
+    if (reduceMotion) {
+      window.addEventListener('resize', resizeStatic);
+      resizeStatic();
+      return () => {
+        window.removeEventListener('resize', resizeStatic);
+      };
+    }
+
+    window.addEventListener('resize', resizeAnimated);
+    resizeAnimated();
     draw();
     return () => {
-      window.removeEventListener('resize', resize);
+      window.removeEventListener('resize', resizeAnimated);
       cancelAnimationFrame(animationFrameId);
     };
-  }, []);
+  }, [reduceMotion]);
+
   return (
     <canvas
       ref={canvasRef}
-      className="absolute inset-0 pointer-events-none z-0 opacity-50" />);
-
-
+      className="absolute inset-0 pointer-events-none z-0 opacity-50"
+    />
+  );
 }

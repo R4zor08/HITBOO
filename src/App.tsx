@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { HitBowProgressProvider } from './context/HitBowProgressContext';
 import type { MatchResult } from './game/matchResult';
+import { appendMatchHistory } from './game/matchHistory';
 import { ScreenState } from './types';
 import { LoadingScreen } from './pages/LoadingScreen';
 import { MainMenu } from './pages/MainMenu';
@@ -17,6 +18,7 @@ export function App() {
   const [gameSessionId, setGameSessionId] = useState(0);
 
   const handleGameOver = (result: MatchResult) => {
+    appendMatchHistory(result);
     setLastWinner(result.winner);
     setLastMatchResult(result);
     setCurrentScreen('victory');

@@ -10,6 +10,20 @@ interface ModalShellProps {
   className?: string;
 }
 
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function getFocusable(panel: HTMLElement): HTMLElement[] {
+  return Array.from(
+    panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+  ).filter(
+    (el) =>
+      el.offsetParent !== null ||
+      el.getClientRects().length > 0 ||
+      el === document.activeElement
+  );
+}
+
 export function ModalShell({
   open,
   onClose,
@@ -23,17 +37,39 @@ export function ModalShell({
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const nodes = getFocusable(panel);
+      if (nodes.length === 0) return;
+      const active = document.activeElement as HTMLElement | null;
+      if (!active || !panel.contains(active)) return;
+
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      if (e.shiftKey) {
+        if (active === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (active === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [open, onClose]);
 
   useEffect(() => {
     if (!open || !panelRef.current) return;
-    const focusable = panelRef.current.querySelector<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
+    const focusable =
+      panelRef.current.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
     focusable?.focus();
   }, [open]);
 
@@ -67,7 +103,7 @@ export function ModalShell({
               <button
                 type="button"
                 onClick={onClose}
-                className="shrink-0 rounded-full border-2 border-white/40 bg-dark-darker px-3 py-1.5 text-sm font-display font-bold text-white hover:bg-white/10"
+                className="shrink-0 rounded-full border-2 border-white/40 bg-dark-darker px-3 py-1.5 text-sm font-display font-bold text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan"
                 aria-label="Close dialog">
                 ✕
               </button>

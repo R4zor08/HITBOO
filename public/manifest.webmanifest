@@ -1,0 +1,17 @@
+{
+  "name": "HitBow Arena",
+  "short_name": "HitBow",
+  "description": "Offline neon artillery duels vs AI.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0a0614",
+  "theme_color": "#0f0622",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
