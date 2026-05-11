@@ -18,6 +18,7 @@ import { useHitBowProgress } from '../context/HitBowProgressContext';
 import { NeonButton } from '../components/ui/NeonButton';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { GlassCard } from '../components/ui/GlassCard';
+import { SectionHeading } from '../components/ui/SectionHeading';
 import type { Weapon } from '../types';
 import { StickerAvatar } from '../components/game/StickerAvatar';
 import { GameSceneBoundary } from '../components/game/GameSceneBoundary';
@@ -784,9 +785,11 @@ export function GameScreen({
                 }}
                 className="flex flex-col items-center gap-4 pointer-events-auto w-full max-w-2xl mx-auto px-4">
                 <div className="w-full space-y-1">
-                  <p className="text-center text-[10px] font-display uppercase tracking-[0.25em] text-gray-500">
+                  <SectionHeading
+                    colorClassName="text-gray-500"
+                    className="text-center">
                     LOADOUT
-                  </p>
+                  </SectionHeading>
                   <div className="relative w-full">
                     <div
                       className="pointer-events-none absolute left-0 top-0 bottom-0 z-10 w-10 bg-gradient-to-r from-[#0f0622] to-transparent"
@@ -853,9 +856,11 @@ export function GameScreen({
                 </div>
 
                 <div className="w-full space-y-1">
-                  <p className="text-center text-[10px] font-display uppercase tracking-[0.25em] text-gray-500">
+                  <SectionHeading
+                    colorClassName="text-gray-500"
+                    className="text-center">
                     AIM
-                  </p>
+                  </SectionHeading>
                   <div
                   ref={aimAreaRef}
                   style={aimAreaStyle}

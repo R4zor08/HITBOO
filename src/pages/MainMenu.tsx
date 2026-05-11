@@ -15,6 +15,9 @@ import { NeonButton } from '../components/ui/NeonButton';
 import { GlassCard } from '../components/ui/GlassCard';
 import { ParticleBackground } from '../components/ui/ParticleBackground';
 import { ModalShell } from '../components/ui/ModalShell';
+import { SectionHeading } from '../components/ui/SectionHeading';
+import { NeonPillBadge } from '../components/ui/NeonPillBadge';
+import { AccentSwatch } from '../components/ui/AccentSwatch';
 import { MenuMascot } from '../components/ui/MenuMascot';
 import { formatCountdown, msUntilLocalMidnight } from '../game/dateUtils';
 import { SHOP_CATALOG } from '../game/shopCatalog';
@@ -36,6 +39,7 @@ type ModalId = 'shop' | 'daily' | 'settings' | 'loadout' | 'stats' | null;
 
 export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
   const progress = useHitBowProgress();
+  const reduceMotion = progress.settings.reduceMotion;
   const [modal, setModal] = useState<ModalId>(null);
   const [countdownTick, setCountdownTick] = useState(0);
   const [shopFlash, setShopFlash] = useState<string | null>(null);
@@ -104,9 +108,9 @@ export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
         title="Roster & loadout">
         <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-1">
           <div>
-            <h3 className="text-xs uppercase tracking-widest text-neon-cyan mb-3">
+            <SectionHeading colorClassName="text-neon-cyan" className="mb-3">
               Your fighter
-            </h3>
+            </SectionHeading>
             <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
               {CHARACTER_CATALOG.map((c) => (
                 <button
@@ -130,9 +134,9 @@ export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
             </div>
           </div>
           <div>
-            <h3 className="text-xs uppercase tracking-widest text-neon-magenta mb-3">
+            <SectionHeading colorClassName="text-neon-magenta" className="mb-3">
               Rival preview (VS screen)
-            </h3>
+            </SectionHeading>
             <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
               {CHARACTER_CATALOG.map((c) => (
                 <button
@@ -156,9 +160,9 @@ export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
             </div>
           </div>
           <div>
-            <h3 className="text-xs uppercase tracking-widest text-gray-300 mb-3">
+            <SectionHeading colorClassName="text-gray-300" className="mb-3">
               Default projectile (sheet weapons)
-            </h3>
+            </SectionHeading>
             <div className="grid gap-2 sm:grid-cols-2">
               {PLAYABLE_WEAPON_PRESETS.map((w) => (
                 <button
@@ -268,12 +272,15 @@ export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
           ) ?? SHOP_CATALOG[0];
           return (
             <div className="mb-4 flex items-center gap-3 rounded-xl border border-white/10 bg-dark-darker/60 px-3 py-2">
-              <span className="text-[10px] uppercase tracking-widest text-gray-500 shrink-0">
+              <SectionHeading
+                colorClassName="text-gray-500"
+                className="shrink-0">
                 Your accent
-              </span>
-              <span
-                className="h-5 w-5 shrink-0 rounded-full border-2 border-white/30"
-                style={{ background: activeSkin?.accentHex }}
+              </SectionHeading>
+              <AccentSwatch
+                accentHex={activeSkin?.accentHex ?? '#00f0ff'}
+                size="sm"
+                alpha={0.35}
               />
               <span className="font-display text-sm font-bold text-white">
                 {activeSkin?.name}
@@ -297,7 +304,9 @@ export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
                   key={item.id}
                   variant="sticker"
                   className={`relative flex flex-col gap-2 p-4 transition-transform ${
-                    shopFlash === item.id ? 'animate-pulse scale-95' : ''
+                    shopFlash === item.id && !reduceMotion
+                      ? 'animate-pulse scale-95'
+                      : ''
                   }`}
                   style={
                     equipped
@@ -310,27 +319,29 @@ export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
                   }>
                   {/* Owned badge — top right */}
                   {owned && !equipped && (
-                    <span className="absolute right-3 top-3 rounded-full border border-neon-lime/50 bg-neon-lime/10 px-2 py-0.5 text-[10px] font-display font-bold uppercase tracking-wide text-neon-lime">
-                      Owned
-                    </span>
+                    <NeonPillBadge
+                      label="Owned"
+                      variant="lime"
+                      className="absolute right-3 top-3"
+                    />
                   )}
                   {equipped && (
-                    <span
-                      className="absolute right-3 top-3 rounded-full px-2 py-0.5 text-[10px] font-display font-bold uppercase tracking-wide text-white"
-                      style={{
-                        background: `${item.accentHex}33`,
-                        border: `1px solid ${item.accentHex}88`
-                      }}>
-                      Equipped ✓
-                    </span>
+                    <NeonPillBadge
+                      label="Equipped ✓"
+                      variant="accent"
+                      accentHex={item.accentHex}
+                      className="absolute right-3 top-3"
+                    />
                   )}
 
                   {/* Swatch + icon */}
-                  <div
-                    className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-white/20 text-xl shadow-inner"
-                    style={{ background: `${item.accentHex}40` }}>
+                  <AccentSwatch
+                    accentHex={item.accentHex}
+                    size="lg"
+                    alpha={0.35}
+                    className="text-xl">
                     {item.icon}
-                  </div>
+                  </AccentSwatch>
 
                   {/* Name & price */}
                   <div>
@@ -353,16 +364,16 @@ export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
                         disabled={!canBuy}
                         className={!canBuy ? 'opacity-50 saturate-50' : ''}
                         onClick={() => onBuy(item.id)}>
-                        Buy
+                        BUY
                       </NeonButton>
                     )}
                     {owned && !equipped && (
                       <NeonButton
                         type="button"
                         size="sm"
-                        variant="success"
+                        variant="secondary"
                         onClick={() => progress.equipItem(item.id)}>
-                        Equip
+                        EQUIP
                       </NeonButton>
                     )}
                   </div>
@@ -627,7 +638,11 @@ export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
           animate={{ scale: 1 }}
           transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.4 }}
           className="mb-10 relative">
-          <div className="absolute inset-0 bg-neon-cyan blur-[40px] opacity-30 rounded-full animate-pulse-glow" />
+          <div
+            className={`absolute inset-0 bg-neon-cyan blur-[40px] opacity-30 rounded-full ${
+              reduceMotion ? '' : 'animate-pulse-glow'
+            }`}
+          />
           <NeonButton
             size="xl"
             variant="primary"
@@ -637,7 +652,13 @@ export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
               <SwordsIcon size={32} />
               PLAY NOW
             </span>
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]" />
+            <div
+              className={`absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full ${
+                reduceMotion
+                  ? ''
+                  : 'group-hover:animate-[shimmer_1.5s_infinite]'
+              }`}
+            />
           </NeonButton>
         </motion.div>
 

@@ -10,7 +10,8 @@ import {
 import { NeonButton } from '../components/ui/NeonButton';
 import { GlassCard } from '../components/ui/GlassCard';
 import { ProgressBar } from '../components/ui/ProgressBar';
-import { ParticleBackground } from '../components/ui/ParticleBackground';
+import { ScreenFrame } from '../components/ui/ScreenFrame';
+import { SectionHeading } from '../components/ui/SectionHeading';
 import { StickerAvatar } from '../components/game/StickerAvatar';
 import { useHitBowProgress } from '../context/HitBowProgressContext';
 import type { MatchResult, MatchRewardResult } from '../game/matchResult';
@@ -102,7 +103,7 @@ export function VictoryScreen({
   const titleText = isWin ? 'VICTORY' : 'DEFEAT';
   return (
     <motion.div
-      className="relative w-full h-screen bg-dark-darker flex flex-col items-center justify-center overflow-hidden"
+      className="relative w-full h-screen overflow-hidden"
       initial={{
         opacity: 0
       }}
@@ -115,13 +116,16 @@ export function VictoryScreen({
       transition={{
         duration: 0.8
       }}>
-      <ParticleBackground reduceMotion={progress.settings.reduceMotion} />
+      <ScreenFrame
+        reduceMotion={progress.settings.reduceMotion}
+        contentClassName="items-center justify-center">
+        <div
+          className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full blur-[100px] opacity-20 pointer-events-none ${
+            isWin ? 'bg-neon-cyan' : 'bg-neon-magenta'
+          }`}
+        />
 
-      <div
-        className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full blur-[100px] opacity-20 pointer-events-none ${isWin ? 'bg-neon-cyan' : 'bg-neon-magenta'}`}
-      />
-
-      <div className="z-10 flex flex-col items-center w-full max-w-2xl px-4">
+        <div className="z-10 flex flex-col items-center w-full max-w-2xl px-4">
         <motion.div
           initial={{
             y: -50,
@@ -143,9 +147,11 @@ export function VictoryScreen({
             size={64}
             className={`mx-auto mb-4 ${isWin ? 'text-neon-yellow' : 'text-gray-600'}`}
           />
-          <p className="text-sm font-display tracking-[0.4em] text-gray-500 mb-2">
+          <SectionHeading
+            colorClassName="text-gray-500"
+            className="mb-2">
             HITBOW
-          </p>
+          </SectionHeading>
           <h1
             className={`text-7xl md:text-9xl font-display font-black tracking-widest ${titleColor}`}>
             {titleText}
@@ -267,6 +273,7 @@ export function VictoryScreen({
           </NeonButton>
         </motion.div>
       </div>
+      </ScreenFrame>
     </motion.div>
   );
 }

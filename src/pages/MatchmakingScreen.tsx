@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { RadarIcon } from 'lucide-react';
-import { ParticleBackground } from '../components/ui/ParticleBackground';
 import { StickerAvatar } from '../components/game/StickerAvatar';
 import { NeonButton } from '../components/ui/NeonButton';
+import { SectionHeading } from '../components/ui/SectionHeading';
+import { ScreenFrame } from '../components/ui/ScreenFrame';
 import { useHitBowProgress } from '../context/HitBowProgressContext';
 interface MatchmakingScreenProps {
   onMatchFound: () => void;
@@ -14,6 +15,7 @@ export function MatchmakingScreen({
   onCancel
 }: MatchmakingScreenProps) {
   const progress = useHitBowProgress();
+  const reduceMotion = progress.settings.reduceMotion;
   const [status, setStatus] = useState<
     'searching' | 'found' | 'cancelled' | 'error'
   >('searching');
@@ -45,7 +47,7 @@ export function MatchmakingScreen({
   }, [onMatchFound, attempt]);
   return (
     <motion.div
-      className="relative w-full h-screen bg-dark-darker flex items-center justify-center overflow-hidden"
+      className="relative w-full h-screen overflow-hidden"
       initial={{
         opacity: 0
       }}
@@ -59,67 +61,79 @@ export function MatchmakingScreen({
       transition={{
         duration: 0.5
       }}>
-      
-      <ParticleBackground reduceMotion={progress.settings.reduceMotion} />
 
-      {status === 'searching' ?
-      <motion.div
-        className="flex flex-col items-center z-10"
-        initial={{
-          scale: 0.8,
-          opacity: 0
-        }}
-        animate={{
-          scale: 1,
-          opacity: 1
-        }}
-        exit={{
-          scale: 0.8,
-          opacity: 0
-        }}>
-        
+      <ScreenFrame
+        reduceMotion={reduceMotion}
+        contentClassName="items-center justify-center">
+        {status === 'searching' ?
+        <motion.div
+          className="flex flex-col items-center z-10"
+          initial={{
+            scale: 0.8,
+            opacity: 0
+          }}
+          animate={{
+            scale: 1,
+            opacity: 1
+          }}
+          exit={{
+            scale: 0.8,
+            opacity: 0
+          }}>
+
           <div className="relative mb-8">
             <motion.div
             className="absolute inset-0 border-2 border-neon-cyan rounded-full"
-            animate={{
-              scale: [1, 2.5],
-              opacity: [1, 0]
-            }}
-            transition={{
-              duration: 1.5,
-              repeat: Infinity,
-              ease: 'easeOut'
-            }} />
+            animate={
+              reduceMotion
+                ? { scale: 1, opacity: 0.55 }
+                : { scale: [1, 2.5], opacity: [1, 0] }
+            }
+            transition={
+              reduceMotion
+                ? { duration: 0 }
+                : { duration: 1.5, repeat: Infinity, ease: 'easeOut' }
+            } />
           
             <motion.div
             className="absolute inset-0 border-2 border-neon-cyan rounded-full"
-            animate={{
-              scale: [1, 2.5],
-              opacity: [1, 0]
-            }}
-            transition={{
-              duration: 1.5,
-              delay: 0.75,
-              repeat: Infinity,
-              ease: 'easeOut'
-            }} />
+            animate={
+              reduceMotion
+                ? { scale: 1, opacity: 0.35 }
+                : { scale: [1, 2.5], opacity: [1, 0] }
+            }
+            transition={
+              reduceMotion
+                ? { duration: 0 }
+                : {
+                    duration: 1.5,
+                    delay: 0.75,
+                    repeat: Infinity,
+                    ease: 'easeOut'
+                  }
+            } />
           
             <div className="w-24 h-24 bg-dark-card rounded-full border-2 border-neon-cyan flex items-center justify-center shadow-neon-cyan relative z-10">
               <RadarIcon
               size={40}
-              className="text-neon-cyan animate-spin-slow" />
+              className={
+                reduceMotion ? 'text-neon-cyan' : 'text-neon-cyan animate-spin-slow'
+              } />
             
             </div>
           </div>
-          <h2 className="text-2xl font-display font-bold text-neon-cyan tracking-widest animate-pulse">
+          <h2
+            className={`text-2xl font-display font-bold text-neon-cyan tracking-widest ${reduceMotion ? '' : 'animate-pulse'}`}>
             PAIRING WITH AI…
           </h2>
           <p className="text-gray-400 mt-2 font-display text-sm">
             Offline — simulated wait, no live lobby.
           </p>
-          <p className="text-gray-500 mt-1 font-display text-xs uppercase tracking-wider">
+          <SectionHeading
+            colorClassName="text-gray-500"
+            className="mt-1">
             You vs a local bot, not real PvP
-          </p>
+          </SectionHeading>
           <NeonButton
             variant="danger"
             size="sm"
@@ -286,6 +300,7 @@ export function MatchmakingScreen({
           </div>
         </div>
       }
+    </ScreenFrame>
     </motion.div>);
 
 }
