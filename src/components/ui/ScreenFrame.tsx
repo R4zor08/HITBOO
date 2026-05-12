@@ -18,7 +18,7 @@ export function ScreenFrame({
   className = '',
   contentClassName = ''
 }: ScreenFrameProps) {
-  const sizing = fullScreen ? 'w-full h-screen' : 'w-full';
+  const sizing = fullScreen ? 'w-full min-h-dvh h-dvh' : 'w-full';
   return (
     <div
       className={`relative ${sizing} bg-dark-darker overflow-hidden flex flex-col bg-grid-pattern ${className}`}>

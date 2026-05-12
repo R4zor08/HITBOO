@@ -119,7 +119,7 @@ export function VictoryScreen({
       : 'DEFEAT';
   return (
     <motion.div
-      className="relative w-full h-screen overflow-hidden"
+      className="relative min-h-dvh h-dvh w-full overflow-hidden"
       initial={{
         opacity: 0
       }}
@@ -136,12 +136,12 @@ export function VictoryScreen({
         reduceMotion={progress.settings.reduceMotion}
         contentClassName="items-center justify-center">
         <div
-          className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full blur-[100px] opacity-20 pointer-events-none ${
+          className={`pointer-events-none absolute left-1/2 top-1/2 h-[min(100vw,800px)] w-[min(100vw,800px)] -translate-x-1/2 -translate-y-1/2 rounded-full blur-[80px] opacity-20 sm:blur-[100px] ${
             playerWon ? 'bg-neon-cyan' : 'bg-neon-magenta'
           }`}
         />
 
-        <div className="z-10 flex flex-col items-center w-full max-w-2xl px-4">
+        <div className="z-10 flex w-full max-w-2xl flex-col items-center px-3 sm:px-4">
         <motion.div
           initial={{
             y: -50,
@@ -158,10 +158,9 @@ export function VictoryScreen({
             bounce: 0.5,
             duration: 1
           }}
-          className="text-center mb-12">
+          className="mb-8 text-center sm:mb-12">
           <TrophyIcon
-            size={64}
-            className={`mx-auto mb-4 ${
+            className={`mx-auto mb-3 h-12 w-12 sm:mb-4 sm:h-16 sm:w-16 ${
               isLocal2p ? 'text-neon-yellow' : isWin ? 'text-neon-yellow' : 'text-gray-600'
             }`}
           />
@@ -171,7 +170,7 @@ export function VictoryScreen({
             HITBOW
           </SectionHeading>
           <h1
-            className={`text-7xl md:text-9xl font-display font-black tracking-widest ${titleColor}`}>
+            className={`font-display text-3xl font-black tracking-widest sm:text-5xl md:text-7xl lg:text-9xl ${titleColor}`}>
             {titleText}
           </h1>
         </motion.div>
@@ -192,9 +191,9 @@ export function VictoryScreen({
           className="w-full">
           <GlassCard
             glowColor={isWin ? 'cyan' : 'magenta'}
-            className="p-8 w-full flex flex-col gap-8">
-            <div className="flex justify-between items-center border-b border-white/10 pb-6">
-              <div className="flex items-center gap-4">
+            className="flex w-full flex-col gap-6 p-4 sm:gap-8 sm:p-8">
+            <div className="flex flex-col gap-4 border-b border-white/10 pb-4 sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:pb-6">
+              <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
                 <div
                   className={`w-16 h-16 rounded-xl border-2 ${isWin ? 'border-neon-cyan shadow-neon-cyan' : 'border-gray-600'} overflow-hidden bg-dark-darker p-1`}>
                   <StickerAvatar
@@ -209,18 +208,20 @@ export function VictoryScreen({
                   />
                 </div>
                 <div>
-                  <div className="font-display font-bold text-lg">
+                  <div className="truncate font-display text-base font-bold sm:text-lg">
                     {safeResult.player.name}
                   </div>
-                  <div className="text-sm text-gray-400">
+                  <div className="text-xs text-gray-400 sm:text-sm">
                     Dmg {safeResult.player.damage} - Acc {safeResult.player.accuracy}%
                   </div>
                 </div>
               </div>
 
-              <div className="text-2xl font-display font-black text-gray-500">VS</div>
+              <div className="shrink-0 text-center font-display text-xl font-black text-gray-500 sm:text-2xl">
+                VS
+              </div>
 
-              <div className="flex items-center gap-4 flex-row-reverse text-right">
+              <div className="flex min-w-0 flex-1 flex-row-reverse items-center gap-3 text-right sm:gap-4">
                 <div
                   className={`w-16 h-16 rounded-xl border-2 ${!isWin ? 'border-neon-magenta shadow-neon-magenta' : 'border-gray-600'} overflow-hidden bg-dark-darker p-1`}>
                   <StickerAvatar
@@ -235,10 +236,10 @@ export function VictoryScreen({
                   />
                 </div>
                 <div>
-                  <div className="font-display font-bold text-lg">
+                  <div className="truncate font-display text-base font-bold sm:text-lg">
                     {safeResult.enemy.name}
                   </div>
-                  <div className="text-sm text-gray-400">
+                  <div className="text-xs text-gray-400 sm:text-sm">
                     Dmg {safeResult.enemy.damage} - Acc {safeResult.enemy.accuracy}%
                   </div>
                 </div>
@@ -293,7 +294,7 @@ export function VictoryScreen({
             delay: 1,
             duration: 0.5
           }}
-          className="flex gap-6 mt-12 w-full">
+          className="mt-8 flex w-full flex-col gap-3 sm:mt-12 sm:flex-row sm:gap-6">
           <NeonButton
             variant="secondary"
             className="flex-1 flex items-center justify-center gap-2"

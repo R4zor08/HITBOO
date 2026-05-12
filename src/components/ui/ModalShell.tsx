@@ -77,7 +77,7 @@ export function ModalShell({
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] sm:p-6"
           role="presentation"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -88,7 +88,7 @@ export function ModalShell({
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            className={`max-h-[90vh] overflow-y-auto w-full max-w-lg rounded-3xl border-4 border-white/90 bg-dark-card shadow-[0_12px_0_0_rgba(0,0,0,0.35)] ${className}`}
+            className={`max-h-[min(90dvh,90vh)] overflow-y-auto w-full max-w-lg rounded-3xl border-4 border-white/90 bg-dark-card shadow-[0_12px_0_0_rgba(0,0,0,0.35)] ${className}`}
             initial={{ scale: 0.92, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.92, opacity: 0, y: 20 }}

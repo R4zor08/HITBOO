@@ -96,7 +96,7 @@ export function MainMenu({ onPlay, onStartPractice, onStartLocal2p }: MainMenuPr
 
   return (
     <motion.div
-      className="relative w-full h-screen bg-dark-darker overflow-hidden flex flex-col bg-grid-pattern"
+      className="relative flex min-h-dvh h-dvh w-full flex-col overflow-hidden bg-dark-darker bg-grid-pattern"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
@@ -581,31 +581,35 @@ export function MainMenu({ onPlay, onStartPractice, onStartLocal2p }: MainMenuPr
       </ModalShell>
 
       <motion.div
-        className="w-full p-6 flex justify-between items-center z-10"
+        className="z-10 flex w-full flex-wrap items-center justify-between gap-3 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] sm:p-6"
         initial={{ y: -50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.2 }}>
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-dark-card border-4 border-white/40 overflow-hidden shadow-[0_4px_0_0_rgba(0,0,0,0.3)] flex items-center justify-center">
-            <UserIcon className="text-neon-cyan" />
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border-4 border-white/40 bg-dark-card shadow-[0_4px_0_0_rgba(0,0,0,0.3)] sm:h-12 sm:w-12">
+            <UserIcon className="text-neon-cyan" size={20} />
           </div>
-          <div>
-            <h3 className="font-display font-bold text-lg">{progress.playerName}</h3>
-            <div className="flex items-center gap-2 text-sm text-neon-yellow">
+          <div className="min-w-0">
+            <h3 className="truncate font-display text-sm font-bold sm:text-lg">
+              {progress.playerName}
+            </h3>
+            <div className="flex items-center gap-2 text-xs text-neon-yellow sm:text-sm">
               <MedalIcon size={14} />
               <span>Rank {progress.playerRank}</span>
             </div>
           </div>
         </div>
 
-        <div className="flex gap-4">
+        <div className="flex shrink-0 gap-2 sm:gap-4">
           <GlassCard
             variant="sticker"
-            className="px-4 py-2 flex items-center gap-2 border-neon-yellow/40">
-            <span className="text-neon-yellow font-bold font-display">
+            className="flex items-center gap-1.5 border-neon-yellow/40 px-2 py-1.5 sm:gap-2 sm:px-4 sm:py-2">
+            <span className="font-display text-sm font-bold text-neon-yellow sm:text-base">
               {progress.coins.toLocaleString()}
             </span>
-            <span className="text-xs text-gray-400 font-display">COINS</span>
+            <span className="font-display text-[10px] text-gray-400 sm:text-xs">
+              COINS
+            </span>
           </GlassCard>
           <GlassCard
             variant="sticker"
@@ -618,18 +622,18 @@ export function MainMenu({ onPlay, onStartPractice, onStartLocal2p }: MainMenuPr
         </div>
       </motion.div>
 
-      <div className="flex-1 flex flex-col items-center justify-center z-10 px-4 pb-8">
-        <div className="flex flex-col md:flex-row items-center justify-center gap-6 mb-8 w-full max-w-4xl">
+      <div className="z-10 flex flex-1 flex-col items-center justify-center px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-2">
+        <div className="mb-6 flex w-full max-w-4xl flex-col items-center justify-center gap-4 md:mb-8 md:flex-row md:gap-6">
           <MenuMascot className="order-2 md:order-1" />
           <motion.div
             className="order-1 md:order-2 text-center"
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: 'spring', bounce: 0.5, duration: 1 }}>
-            <h1 className="text-6xl md:text-8xl font-display font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-neon-cyan to-blue-900 drop-shadow-[0_6px_0_rgba(0,0,0,0.45)]">
+            <h1 className="text-4xl font-display font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-neon-cyan to-blue-900 drop-shadow-[0_6px_0_rgba(0,0,0,0.45)] sm:text-6xl md:text-8xl">
               HITBOW
             </h1>
-            <p className="text-neon-magenta font-display tracking-[0.5em] mt-2 text-glow-magenta font-bold">
+            <p className="mt-2 font-display text-xs font-bold tracking-[0.35em] text-glow-magenta text-neon-magenta sm:text-base sm:tracking-[0.5em]">
               ARENA
             </p>
           </motion.div>
@@ -650,8 +654,8 @@ export function MainMenu({ onPlay, onStartPractice, onStartLocal2p }: MainMenuPr
             variant="primary"
             onClick={onPlay}
             className="relative z-10 overflow-hidden group">
-            <span className="relative z-10 flex items-center gap-3">
-              <SwordsIcon size={32} />
+            <span className="relative z-10 flex items-center gap-2 sm:gap-3">
+              <SwordsIcon className="h-7 w-7 sm:h-8 sm:w-8" />
               PLAY NOW
             </span>
             <div
@@ -680,7 +684,7 @@ export function MainMenu({ onPlay, onStartPractice, onStartLocal2p }: MainMenuPr
         </motion.div>
 
         <motion.div
-          className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-4xl w-full"
+          className="grid w-full max-w-4xl grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-4"
           variants={containerVariants}
           initial="hidden"
           animate="show">
@@ -752,13 +756,13 @@ function MenuTile({
         variant="sticker"
         interactive
         glowColor={colorMap[color]}
-        className="p-6 flex flex-col items-center justify-center gap-3 min-h-[8.5rem] group"
+        className="group flex min-h-[6.5rem] flex-col items-center justify-center gap-2 p-4 sm:min-h-[8.5rem] sm:gap-3 sm:p-6"
         onClick={onClick}>
         <div
           className={`${textColors[color]} transition-transform duration-300 group-hover:scale-110 group-hover:-translate-y-1`}>
-          {cloneElement(icon as React.ReactElement, { size: 36 })}
+          {cloneElement(icon as React.ReactElement, { size: 28 })}
         </div>
-        <span className="font-display font-black text-sm tracking-wider text-white">
+        <span className="text-center font-display text-xs font-black tracking-wider text-white sm:text-sm">
           {title}
         </span>
       </GlassCard>

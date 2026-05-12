@@ -20,7 +20,6 @@ import { useHitBowProgress } from '../context/HitBowProgressContext';
 import { NeonButton } from '../components/ui/NeonButton';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { GlassCard } from '../components/ui/GlassCard';
-import { SectionHeading } from '../components/ui/SectionHeading';
 import type { Local2pLoadout, Weapon } from '../types';
 import { StickerAvatar } from '../components/game/StickerAvatar';
 import { GameSceneBoundary } from '../components/game/GameSceneBoundary';
@@ -171,6 +170,7 @@ export function GameScreen({
   const [releaseShaking, setReleaseShaking] = useState(false);
   const [turnNudgeX, setTurnNudgeX] = useState(0);
   const gameRootRef = useRef<HTMLDivElement>(null);
+  const loadoutScrollRef = useRef<HTMLDivElement>(null);
   const slingshotDraggingRef = useRef(false);
   const aimPowerRef = useRef(0);
   const aimAngleRef = useRef(45);
@@ -737,7 +737,7 @@ export function GameScreen({
 
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
-      if (!canAimRef.current || settingsOpen) return;
+      if (!canAimRef.current || settingsOpen || matchHelpOpen) return;
       const t = ev.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
 
@@ -767,7 +767,7 @@ export function GameScreen({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [settingsOpen, handleFire]);
+  }, [settingsOpen, matchHelpOpen, handleFire]);
 
   useEffect(() => {
     if (!settingsOpen) return;
@@ -780,6 +780,18 @@ export function GameScreen({
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [settingsOpen]);
+
+  useEffect(() => {
+    if (!matchHelpOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMatchHelpOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [matchHelpOpen]);
 
   const toggleFullscreen = async () => {
     try {
@@ -796,7 +808,7 @@ export function GameScreen({
   return (
     <div
       ref={gameRootRef}
-      className="relative w-full h-screen overflow-hidden bg-[#0f0622] select-none touch-none">
+      className="relative w-full min-h-dvh h-dvh overflow-hidden bg-[#0f0622] select-none touch-none">
       <motion.div
         className="absolute inset-0 origin-[50%_72%]"
         animate={{
@@ -879,7 +891,7 @@ export function GameScreen({
             visible={isAiming && aimPower > 5}
           />
           <AimInteractionLayer
-            active={canAim && !settingsOpen}
+            active={canAim && !settingsOpen && !matchHelpOpen}
             onPointerDown={handleSlingshotPointerDown}
             onPointerMove={handleSlingshotPointerMove}
             onPointerUp={handleSlingshotPointerUp}
@@ -904,7 +916,7 @@ export function GameScreen({
       )}
 
       {!local2p && onboardingHintVisible && (
-        <div className="pointer-events-auto absolute bottom-20 left-4 z-[22] max-w-[min(22rem,calc(100vw-2rem))]">
+        <div className="pointer-events-auto absolute bottom-[max(5rem,env(safe-area-inset-bottom))] left-2 right-2 z-[22] mx-auto max-w-[min(22rem,calc(100vw-1rem))] sm:left-4 sm:right-4 sm:mx-0 sm:max-w-[min(22rem,calc(100vw-2rem))]">
           <GlassCard
             variant="sticker"
             className="space-y-3 border-neon-cyan/40 p-4 shadow-[0_0_24px_rgba(0,240,255,0.12)]">
@@ -924,9 +936,9 @@ export function GameScreen({
         </div>
       )}
 
-      {!local2p && matchHelpOpen && (
+      {matchHelpOpen && (
         <div
-          className="pointer-events-auto absolute bottom-28 right-4 z-[22] w-[min(22rem,calc(100vw-2rem))]"
+          className="pointer-events-auto absolute bottom-[max(7rem,env(safe-area-inset-bottom))] left-2 right-2 z-[22] mx-auto w-[min(22rem,calc(100vw-1rem))] sm:left-auto sm:right-4 sm:mx-0 sm:w-[min(22rem,calc(100vw-2rem))]"
           role="dialog"
           aria-label="How to play">
           <GlassCard
@@ -945,28 +957,46 @@ export function GameScreen({
               </button>
             </div>
             <ul className="list-disc space-y-1.5 pl-4 text-xs text-gray-200 marker:text-neon-cyan">
-              <li>Offline vs AI — not live PvP.</li>
+              {local2p ? (
+                <li>
+                  Two players on one device — pass it back each turn; the
+                  glowing fighter is active.
+                </li>
+              ) : (
+                <li>Offline vs AI — not live PvP.</li>
+              )}
               <li>Drag from the active fighter to aim; release to fire.</li>
               <li>Keys: arrows / WASD adjust aim; Space or Enter fires.</li>
               <li>Win by bringing the rival to 0 HP.</li>
             </ul>
-            <NeonButton
-              size="sm"
-              variant="secondary"
-              onClick={() => {
-                dismissMatchTips();
-              }}>
-              Don&apos;t show again
-            </NeonButton>
+            {local2p ? (
+              <NeonButton
+                size="sm"
+                variant="secondary"
+                onClick={() => setMatchHelpOpen(false)}>
+                Close
+              </NeonButton>
+            ) : (
+              <NeonButton
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  dismissMatchTips();
+                }}>
+                Don&apos;t show again
+              </NeonButton>
+            )}
           </GlassCard>
         </div>
       )}
 
-      <div className="absolute inset-0 pointer-events-none z-10 flex flex-col justify-between p-8 gap-8">
-        <div className="flex justify-between items-start gap-8">
-          <GlassCard variant="sticker" className="p-4 md:p-5 flex items-center gap-4 w-[18rem] max-w-[42vw] pointer-events-auto border-neon-cyan/35 bg-dark-card/80 shadow-[0_0_20px_rgba(0,240,255,0.12)]">
-            <div className="relative">
-              <div className="w-12 h-12 rounded-full border-2 border-neon-cyan overflow-hidden bg-dark-darker p-1">
+      <div className="absolute inset-0 pointer-events-none z-[15] flex flex-col justify-between gap-3 p-3 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] sm:gap-6 sm:p-6 md:gap-8 md:p-8">
+        <div className="flex min-h-0 justify-between gap-1.5 sm:gap-4 md:gap-8 items-start">
+          <GlassCard
+            variant="sticker"
+            className="pointer-events-auto flex min-w-0 max-w-[calc(50%-0.25rem)] flex-1 items-center gap-2 border-neon-cyan/35 bg-dark-card/80 p-2.5 shadow-[0_0_20px_rgba(0,240,255,0.12)] sm:max-w-[min(16rem,44vw)] sm:gap-3 sm:p-4 md:w-[18rem] md:max-w-[42vw] md:flex-none md:gap-4 md:p-5">
+            <div className="relative shrink-0">
+              <div className="h-9 w-9 rounded-full border-2 border-neon-cyan overflow-hidden bg-dark-darker p-0.5 sm:h-12 sm:w-12 sm:border-2 sm:p-1">
                 <StickerAvatar
                   characterId={
                     local2p && local2pLoadout
@@ -978,12 +1008,12 @@ export function GameScreen({
                   className="h-full w-full"
                 />
               </div>
-              <div className="absolute -bottom-2 -right-2 bg-dark-card text-[10px] font-bold border border-neon-cyan rounded px-1 text-neon-cyan">
+              <div className="absolute -bottom-1.5 -right-1.5 bg-dark-card text-[9px] font-bold border border-neon-cyan rounded px-0.5 text-neon-cyan sm:-bottom-2 sm:-right-2 sm:text-[10px] sm:px-1">
                 Lv.{playerRankLabel}
               </div>
             </div>
-            <div className="flex-1">
-              <div className="text-sm font-display font-bold text-white mb-1">
+            <div className="min-w-0 flex-1">
+              <div className="mb-0.5 truncate font-display text-[11px] font-bold text-white sm:mb-1 sm:text-sm">
                 {playerDisplayName}
               </div>
               <ProgressBar
@@ -995,42 +1025,43 @@ export function GameScreen({
             </div>
           </GlassCard>
 
-          <div className="flex flex-col items-center gap-4">
+          <div className="relative z-20 flex min-w-0 max-w-[36%] shrink flex-col items-center gap-2 sm:max-w-none sm:gap-4">
             {local2p && onExitMatch && (
-              <div className="flex flex-col sm:flex-row gap-2 items-center pointer-events-auto">
+              <div className="pointer-events-auto flex flex-col items-center gap-2 sm:flex-row">
                 <GlassCard
                   variant="sticker"
                   interactive
-                  className="px-4 py-2 flex items-center gap-2 border-neon-lime/40 min-h-[44px]"
+                  aria-label="Exit match"
+                  className="flex min-h-[44px] min-w-0 max-w-full items-center gap-1.5 border-neon-lime/40 px-2 py-2 sm:gap-2 sm:px-4"
                   onClick={() => onExitMatch()}>
-                  <LogOutIcon size={18} className="text-neon-lime" />
-                  <span className="font-display text-xs font-black tracking-wide text-white">
+                  <LogOutIcon size={18} className="shrink-0 text-neon-lime" />
+                  <span className="whitespace-nowrap font-display text-[10px] font-black tracking-wide text-white sm:text-xs">
                     EXIT MATCH
                   </span>
                 </GlassCard>
               </div>
             )}
             {practice && onExitMatch && (
-              <div className="flex flex-col sm:flex-row gap-2 items-center pointer-events-auto">
+              <div className="pointer-events-auto flex max-w-full flex-col items-stretch gap-2 sm:flex-row sm:items-center">
                 <GlassCard
                   variant="sticker"
                   interactive
-                  className="px-4 py-2 flex items-center gap-2 border-neon-yellow/40 min-h-[44px]"
+                  className="flex min-h-[44px] items-center justify-center gap-2 border-neon-yellow/40 px-3 py-2"
                   onClick={() => onExitMatch()}>
                   <LogOutIcon size={18} className="text-neon-yellow" />
-                  <span className="font-display text-xs font-black tracking-wide text-white">
+                  <span className="font-display text-[10px] font-black tracking-wide text-white sm:text-xs">
                     EXIT PRACTICE
                   </span>
                 </GlassCard>
                 <GlassCard
                   variant="sticker"
                   interactive
-                  className="px-4 py-2 flex items-center gap-2 border-neon-lime/40 min-h-[44px]"
+                  className="flex min-h-[44px] items-center justify-center gap-2 border-neon-lime/40 px-3 py-2"
                   onClick={() => {
                     setEnemyHp(100);
                     setPlayerHp(100);
                   }}>
-                  <span className="font-display text-xs font-black tracking-wide text-neon-lime">
+                  <span className="text-center font-display text-[10px] font-black tracking-wide text-neon-lime sm:text-xs">
                     RESET DUMMY HP
                   </span>
                 </GlassCard>
@@ -1066,7 +1097,7 @@ export function GameScreen({
                   }}
                   initial="hidden"
                   animate="visible"
-                  className={`flex flex-wrap justify-center gap-y-1 rounded-full border px-4 py-2 md:px-5 bg-dark-card/70 font-display font-black text-lg md:text-2xl tracking-[0.18em] uppercase ${isPlayerTurn ? 'text-neon-cyan border-neon-cyan/45 drop-shadow-[0_2px_0_rgba(0,0,0,0.6)]' : 'text-neon-magenta border-neon-magenta/45 drop-shadow-[0_2px_0_rgba(0,0,0,0.6)]'}`}>
+                  className={`flex max-w-[min(92vw,18rem)] flex-wrap justify-center gap-y-0.5 rounded-full border bg-dark-card/70 px-2 py-1.5 font-display text-[10px] font-black uppercase leading-tight tracking-[0.08em] drop-shadow-[0_2px_0_rgba(0,0,0,0.6)] sm:max-w-none sm:gap-y-1 sm:px-4 sm:py-2 sm:text-base sm:tracking-[0.14em] md:px-5 md:text-2xl md:tracking-[0.18em] ${isPlayerTurn ? 'text-neon-cyan border-neon-cyan/45' : 'text-neon-magenta border-neon-magenta/45'}`}>
                   {(local2p
                     ? isPlayerTurn
                       ? 'PLAYER 1 TURN'
@@ -1151,9 +1182,14 @@ export function GameScreen({
               </motion.div>
             ) : null}
 
-            <GlassCard variant="sticker" className="px-4 py-2 flex items-center gap-3 rounded-full border-cyan-500/45 bg-dark-darker/90 pointer-events-none shadow-[0_0_14px_rgba(0,240,255,0.14)]">
-              <WindIcon size={18} className="text-neon-cyan shrink-0" />
-              <span className="font-display font-bold text-sm">
+            <GlassCard
+              variant="sticker"
+              className="pointer-events-none flex items-center gap-2 rounded-full border-cyan-500/45 bg-dark-darker/90 px-2.5 py-1.5 shadow-[0_0_14px_rgba(0,240,255,0.14)] sm:gap-3 sm:px-4 sm:py-2">
+              <WindIcon
+                size={18}
+                className="h-4 w-4 shrink-0 text-neon-cyan sm:h-[18px] sm:w-[18px]"
+              />
+              <span className="font-display text-xs font-bold sm:text-sm">
                 {wind.speed}
               </span>
               <motion.div
@@ -1164,9 +1200,11 @@ export function GameScreen({
             </GlassCard>
           </div>
 
-          <GlassCard variant="sticker" className="p-4 md:p-5 flex items-center gap-4 w-[18rem] max-w-[42vw] flex-row-reverse pointer-events-auto border-neon-magenta/35 bg-dark-card/80 shadow-[0_0_20px_rgba(255,0,229,0.12)]">
-            <div className="relative">
-              <div className="w-12 h-12 rounded-full border-2 border-neon-magenta overflow-hidden bg-dark-darker p-1">
+          <GlassCard
+            variant="sticker"
+            className="pointer-events-auto flex min-w-0 max-w-[calc(50%-0.25rem)] flex-1 flex-row-reverse items-center gap-2 border-neon-magenta/35 bg-dark-card/80 p-2.5 shadow-[0_0_20px_rgba(255,0,229,0.12)] sm:max-w-[min(16rem,44vw)] sm:gap-3 sm:p-4 md:w-[18rem] md:max-w-[42vw] md:flex-none md:gap-4 md:p-5">
+            <div className="relative shrink-0">
+              <div className="h-9 w-9 rounded-full border-2 border-neon-magenta overflow-hidden bg-dark-darker p-0.5 sm:h-12 sm:w-12 sm:border-2 sm:p-1">
                 <StickerAvatar
                   characterId={
                     local2p && local2pLoadout
@@ -1178,12 +1216,12 @@ export function GameScreen({
                   className="h-full w-full"
                 />
               </div>
-              <div className="absolute -bottom-2 -left-2 bg-dark-card text-[10px] font-bold border border-neon-magenta rounded px-1 text-neon-magenta">
+              <div className="absolute -bottom-1.5 -left-1.5 bg-dark-card text-[9px] font-bold border border-neon-magenta rounded px-0.5 text-neon-magenta sm:-bottom-2 sm:-left-2 sm:text-[10px] sm:px-1">
                 Lv.{enemyRankLabel}
               </div>
             </div>
-            <div className="flex-1 text-right">
-              <div className="text-sm font-display font-bold text-white mb-1">
+            <div className="min-w-0 flex-1 text-right">
+              <div className="mb-0.5 truncate font-display text-[11px] font-bold text-white sm:mb-1 sm:text-sm">
                 {enemyName}
               </div>
               <ProgressBar
@@ -1197,11 +1235,11 @@ export function GameScreen({
           </GlassCard>
         </div>
 
-        <div className="flex justify-between items-end gap-8">
-          <div className="w-12 shrink-0 pointer-events-none" aria-hidden />
+        <div className="flex min-h-0 items-end justify-between gap-2 sm:gap-6 md:gap-8">
+          <div className="w-6 shrink-0 pointer-events-none sm:w-12" aria-hidden />
 
           <AnimatePresence>
-            {canAim && !local2p && (
+            {!local2p && (
               <motion.div
                 initial={{
                   y: 80,
@@ -1217,11 +1255,29 @@ export function GameScreen({
                 }}
                 className="pointer-events-auto mx-auto flex w-full max-w-2xl flex-col items-center gap-2 px-4">
                 <div className="w-full space-y-1">
-                  <SectionHeading
-                    colorClassName="text-gray-500"
-                    className="text-center">
-                    LOADOUT
-                  </SectionHeading>
+                  {!canAim ? (
+                    <p className="text-center font-display text-[10px] uppercase tracking-wide text-gray-500">
+                      Weapons apply on your next turn
+                    </p>
+                  ) : null}
+                  <div className="flex justify-center">
+                    <GlassCard
+                      variant="sticker"
+                      interactive
+                      aria-label="Weapon loadout"
+                      className="min-h-[44px] px-4 py-2 flex items-center justify-center border-white/25"
+                      onClick={() =>
+                        loadoutScrollRef.current?.scrollIntoView({
+                          behavior: reduceMotion ? 'auto' : 'smooth',
+                          block: 'nearest',
+                          inline: 'nearest'
+                        })
+                      }>
+                      <span className="font-display text-[10px] uppercase tracking-[0.25em] text-gray-500 text-center">
+                        LOADOUT
+                      </span>
+                    </GlassCard>
+                  </div>
                   <div className="relative w-full">
                     <div
                       className="pointer-events-none absolute bottom-0 left-0 top-0 z-10 w-10 bg-gradient-to-r from-[#0f0622] to-transparent"
@@ -1231,7 +1287,9 @@ export function GameScreen({
                       className="pointer-events-none absolute bottom-0 right-0 top-0 z-10 w-10 bg-gradient-to-l from-[#0f0622] to-transparent"
                       aria-hidden
                     />
-                    <div className="relative z-0 flex snap-x snap-mandatory flex-nowrap gap-1.5 overflow-x-auto overflow-y-visible scroll-smooth px-2 py-1 pb-1 [-webkit-overflow-scrolling:touch]">
+                    <div
+                      ref={loadoutScrollRef}
+                      className="relative z-0 flex touch-pan-x snap-x snap-mandatory flex-nowrap gap-1.5 overflow-x-auto overflow-y-visible overscroll-x-contain scroll-smooth px-2 py-1 pb-1 [-webkit-overflow-scrolling:touch]">
                       {WEAPON_PRESETS.map((w: Weapon) => {
                         const selected = selectedWeaponId === w.id;
                         const card = (
@@ -1290,15 +1348,17 @@ export function GameScreen({
             )}
           </AnimatePresence>
 
-          <div className="flex gap-4 pointer-events-auto relative items-center">
+          <div className="relative flex flex-wrap items-center justify-end gap-2 pointer-events-auto sm:gap-4">
             <AnimatePresence>
               {settingsOpen && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 10 }}
-                  className="absolute bottom-16 right-0 w-72 z-20">
-                  <GlassCard variant="sticker" className="p-6 space-y-5 border-neon-purple/35">
+                  className="absolute bottom-14 right-0 left-auto z-20 w-[min(18rem,calc(100vw-1rem-env(safe-area-inset-left)-env(safe-area-inset-right)))] sm:bottom-16">
+                  <GlassCard
+                    variant="sticker"
+                    className="space-y-4 border-neon-purple/35 p-4 sm:space-y-5 sm:p-6">
                     <div className="flex justify-between items-center">
                       <span className="font-display text-sm font-bold">
                         Settings

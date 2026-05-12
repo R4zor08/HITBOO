@@ -52,17 +52,17 @@ export function Local2pPrematchFlow({
 
   return (
     <motion.div
-      className="relative w-full h-screen overflow-hidden"
+      className="relative min-h-dvh h-dvh w-full overflow-hidden"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0, scale: 0.98 }}
       transition={{ duration: 0.4 }}>
       <ScreenFrame
         reduceMotion={reduceMotion}
-        contentClassName="items-stretch justify-start pt-6 pb-8 px-4 overflow-y-auto">
+        contentClassName="items-stretch justify-start overflow-y-auto px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))]">
         <div className="w-full max-w-3xl mx-auto space-y-6">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div className="flex min-w-0 items-center gap-3">
               <UsersIcon className="text-neon-lime shrink-0" size={28} />
               <div>
                 <SectionHeading colorClassName="text-neon-lime" className="mb-0">
@@ -73,7 +73,11 @@ export function Local2pPrematchFlow({
                 </p>
               </div>
             </div>
-            <NeonButton variant="secondary" size="sm" onClick={onCancel}>
+            <NeonButton
+              variant="secondary"
+              size="sm"
+              className="shrink-0 self-start sm:self-auto"
+              onClick={onCancel}>
               Back
             </NeonButton>
           </div>

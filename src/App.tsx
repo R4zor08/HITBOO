@@ -78,7 +78,7 @@ export function App() {
 
   return (
     <HitBowProgressProvider>
-      <div className="w-full h-screen bg-dark-darker text-white overflow-hidden font-sans selection:bg-neon-cyan/30">
+      <div className="flex min-h-dvh w-full flex-col bg-dark-darker text-white overflow-hidden font-sans selection:bg-neon-cyan/30">
         <AnimatePresence mode="sync">
           {currentScreen === 'loading' && (
             <LoadingScreen

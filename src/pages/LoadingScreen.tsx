@@ -29,7 +29,7 @@ export function LoadingScreen({ onComplete }: LoadingScreenProps) {
   }, [onComplete]);
   return (
     <motion.div
-      className="relative w-full h-screen overflow-hidden"
+      className="relative min-h-dvh h-dvh w-full overflow-hidden"
       initial={{
         opacity: 0
       }}
