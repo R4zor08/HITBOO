@@ -17,10 +17,12 @@ import {
 import { PLAYABLE_WEAPON_PRESETS } from '../game/weaponsCatalog';
 import { DEFAULT_WEAPON_ID } from '../game/weaponsCatalog';
 import { WEAPON_PRESETS } from '../game/weapons';
-import { DEFAULT_MAP_ID, MAPS } from '../game/maps';
+import { getMapById } from '../game/maps';
 import type { MapId } from '../types';
 
 interface Local2pPrematchFlowProps {
+  /** Arena chosen on the map-select screen before this flow. */
+  presetMapId: MapId;
   onComplete: (loadout: Local2pLoadout) => void;
   onCancel: () => void;
 }
@@ -29,6 +31,7 @@ type Step = 'p1' | 'p2' | 'versus';
 
 /** v2: could restrict picks to shop-owned items like solo roster. */
 export function Local2pPrematchFlow({
+  presetMapId,
   onComplete,
   onCancel
 }: Local2pPrematchFlowProps) {
@@ -44,7 +47,8 @@ export function Local2pPrematchFlow({
     DEFAULT_ENEMY_CHARACTER_ID
   );
   const [p2WeaponId, setP2WeaponId] = useState(DEFAULT_WEAPON_ID);
-  const [mapId, setMapId] = useState<MapId>(DEFAULT_MAP_ID);
+
+  const arena = getMapById(presetMapId);
 
   const p1Weapon =
     WEAPON_PRESETS.find((w) => w.id === p1WeaponId) ?? WEAPON_PRESETS[0];
@@ -162,39 +166,23 @@ export function Local2pPrematchFlow({
                   </span>
                 </GlassCard>
               </div>
-              <div>
-                <p className="mb-2 text-center font-display text-xs uppercase tracking-wider text-gray-400">
-                  Select map
-                </p>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {MAPS.map((m) => {
-                    const selected = mapId === m.id;
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => setMapId(m.id)}
-                        className={`min-h-[44px] rounded-xl border-2 px-2 py-2 text-left transition ${
-                          selected
-                            ? 'border-neon-lime bg-neon-lime/15 ring-2 ring-neon-lime/35'
-                            : 'border-white/20 bg-dark-darker hover:border-neon-lime/60'
-                        }`}
-                        aria-label={`Map ${m.name}`}>
-                        <div
-                          className="mb-1 h-12 w-full rounded-md border border-white/20 bg-cover bg-center"
-                          style={{ backgroundImage: `url(${m.previewSrc})` }}
-                        />
-                        <p className="font-display text-[11px] font-bold text-white">
-                          {m.name}
-                        </p>
-                        <p className="font-display text-[10px] text-gray-300">
-                          {m.theme}
-                        </p>
-                      </button>
-                    );
-                  })}
+              <GlassCard
+                variant="default"
+                className="mx-auto max-w-lg overflow-hidden border-2 border-neon-lime/25 bg-dark-card/80 p-0 shadow-glass backdrop-blur-md">
+                <div
+                  className="relative h-32 w-full bg-cover bg-center sm:h-36"
+                  style={{ backgroundImage: `url(${arena.previewSrc})` }}>
+                  <div className="absolute inset-0 bg-gradient-to-r from-dark-darker/90 via-dark-darker/40 to-transparent" />
+                  <div className="absolute inset-y-0 left-0 flex max-w-[70%] flex-col justify-center p-4">
+                    <p className="font-display text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                      Arena
+                    </p>
+                    <p className="font-display text-lg font-black text-white">{arena.name}</p>
+                    <p className="font-display text-xs text-neon-lime/90">{arena.theme}</p>
+                    <p className="font-display text-[11px] text-gray-400">{arena.biome}</p>
+                  </div>
                 </div>
-              </div>
+              </GlassCard>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <NeonButton variant="secondary" onClick={() => setStep('p2')}>
                   Back
@@ -208,7 +196,7 @@ export function Local2pPrematchFlow({
                       p1WeaponId,
                       p2CharacterId,
                       p2WeaponId,
-                      mapId
+                      mapId: presetMapId
                     })
                   }>
                   Start match

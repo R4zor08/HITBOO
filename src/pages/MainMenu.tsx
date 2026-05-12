@@ -102,6 +102,10 @@ export function MainMenu({ onPlay, onStartPractice, onStartLocal2p }: MainMenuPr
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.5 }}>
       <ParticleBackground reduceMotion={progress.settings.reduceMotion} />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-[2] bg-gradient-to-b from-dark-darker/95 via-transparent to-dark-darker/90"
+      />
 
       <ModalShell
         open={modal === 'loadout'}

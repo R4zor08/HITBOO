@@ -1007,7 +1007,7 @@ export function GameScreen({
   return (
     <div
       ref={gameRootRef}
-      className="relative w-full min-h-dvh h-dvh overflow-hidden bg-[#0f0622] select-none touch-none">
+      className="relative w-full min-h-dvh h-dvh overflow-hidden bg-dark-darker select-none touch-none">
       <motion.div
         className="absolute inset-0 origin-[50%_72%]"
         animate={{
@@ -1035,7 +1035,7 @@ export function GameScreen({
               <div className="absolute inset-0 z-20 flex items-center justify-center px-6">
                 <GlassCard
                   variant="sticker"
-                  className="w-full max-w-xl p-7 text-center border-neon-magenta/60">
+                  className="w-full max-w-xl p-7 text-center shadow-glass backdrop-blur-md border-neon-magenta/60">
                   <h2 className="font-display text-2xl font-black text-neon-magenta">
                     Arena failed to render
                   </h2>
@@ -1108,7 +1108,7 @@ export function GameScreen({
         <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center px-6">
           <GlassCard
             variant="sticker"
-            className="w-full max-w-lg p-6 text-center border-neon-yellow/60 bg-dark-card/90">
+            className="w-full max-w-lg p-6 text-center shadow-glass backdrop-blur-md border-neon-yellow/60 bg-dark-card/90">
             <p className="font-display text-neon-yellow font-black tracking-wide">
               Preparing arena...
             </p>
@@ -1123,7 +1123,7 @@ export function GameScreen({
         <div className="pointer-events-auto absolute bottom-[max(5rem,env(safe-area-inset-bottom))] left-2 right-2 z-[22] mx-auto max-w-[min(22rem,calc(100vw-1rem))] sm:left-4 sm:right-4 sm:mx-0 sm:max-w-[min(22rem,calc(100vw-2rem))]">
           <GlassCard
             variant="sticker"
-            className="space-y-3 border-neon-cyan/40 p-4 shadow-[0_0_24px_rgba(0,240,255,0.12)]">
+            className="space-y-3 border-neon-cyan/40 p-4 shadow-glass backdrop-blur-md">
             <p className="font-display text-xs font-bold tracking-wide text-white">
               Pull from your fighter to aim — release to fire (needs a little
               power). Wind shifts each volley.
@@ -1147,7 +1147,7 @@ export function GameScreen({
           aria-label="How to play">
           <GlassCard
             variant="sticker"
-            className="space-y-3 border-neon-cyan/40 p-4 shadow-[0_0_24px_rgba(0,240,255,0.12)]">
+            className="space-y-3 border-neon-cyan/40 p-4 shadow-glass backdrop-blur-md">
             <div className="flex items-start justify-between gap-2">
               <h2 className="font-display text-sm font-black text-neon-cyan tracking-wide">
                 Controls
@@ -1198,7 +1198,7 @@ export function GameScreen({
         <div className="flex min-h-0 justify-between gap-1.5 sm:gap-4 md:gap-8 items-start">
           <GlassCard
             variant="sticker"
-            className="pointer-events-auto flex min-w-0 max-w-[calc(50%-0.25rem)] flex-1 items-center gap-2 border-neon-cyan/35 bg-dark-card/80 p-2.5 shadow-[0_0_20px_rgba(0,240,255,0.12)] sm:max-w-[min(16rem,44vw)] sm:gap-3 sm:p-4 md:w-[18rem] md:max-w-[42vw] md:flex-none md:gap-4 md:p-5">
+            className="pointer-events-auto flex min-w-0 max-w-[calc(50%-0.25rem)] flex-1 items-center gap-2 border-neon-cyan/35 bg-dark-card/85 p-2.5 shadow-glass backdrop-blur-md sm:max-w-[min(16rem,44vw)] sm:gap-3 sm:p-4 md:w-[18rem] md:max-w-[42vw] md:flex-none md:gap-4 md:p-5">
             <div className="relative shrink-0">
               <div className="h-9 w-9 rounded-full border-2 border-neon-cyan overflow-hidden bg-dark-darker p-0.5 sm:h-12 sm:w-12 sm:border-2 sm:p-1">
                 <StickerAvatar
@@ -1396,7 +1396,7 @@ export function GameScreen({
 
             <GlassCard
               variant="sticker"
-              className="pointer-events-none flex items-center gap-2 rounded-full border-cyan-500/45 bg-dark-darker/90 px-2.5 py-1.5 shadow-[0_0_14px_rgba(0,240,255,0.14)] sm:gap-3 sm:px-4 sm:py-2">
+              className="pointer-events-none flex items-center gap-2 rounded-full border-cyan-500/45 bg-dark-darker/90 px-2.5 py-1.5 shadow-glass backdrop-blur-md sm:gap-3 sm:px-4 sm:py-2">
               <WindIcon
                 size={18}
                 className="h-4 w-4 shrink-0 text-neon-cyan sm:h-[18px] sm:w-[18px]"
@@ -1417,7 +1417,7 @@ export function GameScreen({
 
           <GlassCard
             variant="sticker"
-            className="pointer-events-auto flex min-w-0 max-w-[calc(50%-0.25rem)] flex-1 flex-row-reverse items-center gap-2 border-neon-magenta/35 bg-dark-card/80 p-2.5 shadow-[0_0_20px_rgba(255,0,229,0.12)] sm:max-w-[min(16rem,44vw)] sm:gap-3 sm:p-4 md:w-[18rem] md:max-w-[42vw] md:flex-none md:gap-4 md:p-5">
+            className="pointer-events-auto flex min-w-0 max-w-[calc(50%-0.25rem)] flex-1 flex-row-reverse items-center gap-2 border-neon-magenta/35 bg-dark-card/85 p-2.5 shadow-glass backdrop-blur-md sm:max-w-[min(16rem,44vw)] sm:gap-3 sm:p-4 md:w-[18rem] md:max-w-[42vw] md:flex-none md:gap-4 md:p-5">
             <div className="relative shrink-0">
               <div className="h-9 w-9 rounded-full border-2 border-neon-magenta overflow-hidden bg-dark-darker p-0.5 sm:h-12 sm:w-12 sm:border-2 sm:p-1">
                 <StickerAvatar

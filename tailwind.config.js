@@ -36,7 +36,8 @@ export default {
         'neon-magenta': '0 0 5px theme("colors.neon.magenta"), 0 0 20px theme("colors.neon.magenta")',
         'neon-purple': '0 0 5px theme("colors.neon.purple"), 0 0 20px theme("colors.neon.purple")',
         'neon-lime': '0 0 5px theme("colors.neon.lime"), 0 0 20px theme("colors.neon.lime")',
-        'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
+        glass:
+          '0 8px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06)',
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',

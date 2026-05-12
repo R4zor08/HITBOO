@@ -26,7 +26,10 @@
 }
 @layer utilities {
   .glass-panel {
-    @apply bg-dark-card backdrop-blur-md border border-white/10 shadow-glass;
+    @apply border border-white/10 bg-dark-card/85 shadow-glass backdrop-blur-lg;
+  }
+  .glass-panel-strong {
+    @apply border border-white/10 bg-dark-card/90 shadow-glass backdrop-blur-xl;
   }
   .text-glow-cyan {
     text-shadow: 0 0 10px #00f0ff, 0 0 20px #00f0ff;

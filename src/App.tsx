@@ -7,6 +7,7 @@ import type { Local2pLoadout, MapId, ScreenState } from './types';
 import { LoadingScreen } from './pages/LoadingScreen';
 import { Local2pPrematchFlow } from './pages/Local2pPrematchFlow';
 import { MainMenu } from './pages/MainMenu';
+import { MapSelectScreen } from './pages/MapSelectScreen';
 import { MatchmakingScreen } from './pages/MatchmakingScreen';
 import { GameScreen, type GameMode } from './pages/GameScreen';
 import { VictoryScreen } from './pages/VictoryScreen';
@@ -22,6 +23,9 @@ export function App() {
   const [local2pLoadout, setLocal2pLoadout] = useState<Local2pLoadout | null>(
     null
   );
+  /** Arena picked on the local map screen before loadout wizard. */
+  const [local2pArenaMapId, setLocal2pArenaMapId] =
+    useState<MapId>(DEFAULT_MAP_ID);
 
   const clearLocal2pSession = () => {
     setLocal2pLoadout(null);
@@ -36,9 +40,23 @@ export function App() {
     setCurrentScreen('victory');
   };
 
-  const goMatchmaking = () => {
+  const goPlayNowMapSelect = () => {
     setGameMode('standard');
+    setCurrentScreen('map_select_online');
+  };
+
+  const confirmOnlineMapAndQueue = (mapId: MapId) => {
+    setSelectedMapId(mapId);
     setCurrentScreen('matchmaking');
+  };
+
+  const goLocalMapSelect = () => {
+    setCurrentScreen('map_select_local');
+  };
+
+  const confirmLocalMapAndSetup = (mapId: MapId) => {
+    setLocal2pArenaMapId(mapId);
+    setCurrentScreen('local2p_setup');
   };
 
   const startStandardFromMatchmaking = (mapId: MapId) => {
@@ -64,9 +82,6 @@ export function App() {
     }
   };
 
-  const goLocal2pSetup = () => {
-    setCurrentScreen('local2p_setup');
-  };
 
   const startLocal2pFromWizard = (loadout: Local2pLoadout) => {
     setLocal2pLoadout(loadout);
@@ -78,6 +93,7 @@ export function App() {
 
   const exitToMenu = () => {
     clearLocal2pSession();
+    setLocal2pArenaMapId(DEFAULT_MAP_ID);
     setCurrentScreen('menu');
   };
 
@@ -95,23 +111,43 @@ export function App() {
           {currentScreen === 'menu' && (
             <MainMenu
               key="menu"
-              onPlay={goMatchmaking}
+              onPlay={goPlayNowMapSelect}
               onStartPractice={startPractice}
-              onStartLocal2p={goLocal2pSetup}
+              onStartLocal2p={goLocalMapSelect}
+            />
+          )}
+
+          {currentScreen === 'map_select_online' && (
+            <MapSelectScreen
+              key="map_select_online"
+              mode="online"
+              onContinue={confirmOnlineMapAndQueue}
+              onCancel={() => setCurrentScreen('menu')}
+            />
+          )}
+
+          {currentScreen === 'map_select_local' && (
+            <MapSelectScreen
+              key="map_select_local"
+              mode="local2p"
+              onContinue={confirmLocalMapAndSetup}
+              onCancel={() => setCurrentScreen('menu')}
             />
           )}
 
           {currentScreen === 'matchmaking' && (
             <MatchmakingScreen
               key="matchmaking"
+              mapId={selectedMapId}
               onMatchFound={startStandardFromMatchmaking}
-              onCancel={() => setCurrentScreen('menu')}
+              onCancel={() => setCurrentScreen('map_select_online')}
             />
           )}
 
           {currentScreen === 'local2p_setup' && (
             <Local2pPrematchFlow
-              key="local2p_setup"
+              key={`local2p_setup-${local2pArenaMapId}`}
+              presetMapId={local2pArenaMapId}
               onComplete={startLocal2pFromWizard}
               onCancel={exitToMenu}
             />

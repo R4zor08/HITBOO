@@ -3,6 +3,8 @@ import type { CharacterId } from './game/charactersCatalog';
 export type ScreenState =
   | 'loading'
   | 'menu'
+  | 'map_select_online'
+  | 'map_select_local'
   | 'matchmaking'
   | 'local2p_setup'
   | 'game'
@@ -67,11 +69,16 @@ export interface Local2pLoadout {
 }
 
 export type MapId =
-  | 'sunset_canyon'
-  | 'raider_outpost'
-  | 'forest_camp'
-  | 'ruined_plains'
-  | 'desert_waste';
+  | 'birch_night_glade'
+  | 'cavern_glow'
+  | 'golden_canopy'
+  | 'lakeside_clearing'
+  | 'skyline_grove'
+  | 'mountain_highway'
+  | 'midnight_grove'
+  | 'alpine_dawn'
+  | 'forest_trail'
+  | 'pine_ridge_deck';
 
 export interface MapDefinition {
   id: MapId;

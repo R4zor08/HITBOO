@@ -18,13 +18,13 @@ export function NeonButton({
 }: NeonButtonProps) {
   const variants = {
     primary:
-      'bg-neon-cyan/25 border-neon-cyan shadow-[0_8px_0_0_rgba(0,240,255,0.45)] hover:bg-neon-cyan/40',
+      'bg-neon-cyan/25 border-neon-cyan shadow-[0_8px_0_0_rgba(0,240,255,0.45)] hover:bg-neon-cyan/40 focus-visible:ring-neon-cyan/75',
     secondary:
-      'bg-neon-purple/25 border-neon-purple shadow-[0_8px_0_0_rgba(168,85,247,0.4)] hover:bg-neon-purple/40',
+      'bg-neon-purple/25 border-neon-purple shadow-[0_8px_0_0_rgba(168,85,247,0.4)] hover:bg-neon-purple/40 focus-visible:ring-neon-purple/75',
     danger:
-      'bg-neon-magenta/25 border-neon-magenta shadow-[0_8px_0_0_rgba(255,0,229,0.4)] hover:bg-neon-magenta/40',
+      'bg-neon-magenta/25 border-neon-magenta shadow-[0_8px_0_0_rgba(255,0,229,0.4)] hover:bg-neon-magenta/40 focus-visible:ring-neon-magenta/75',
     success:
-      'bg-neon-lime/25 border-neon-lime shadow-[0_8px_0_0_rgba(180,255,0,0.4)] hover:bg-neon-lime/40'
+      'bg-neon-lime/25 border-neon-lime shadow-[0_8px_0_0_rgba(180,255,0,0.4)] hover:bg-neon-lime/40 focus-visible:ring-neon-lime/75'
   };
   const sizes = {
     sm: 'px-4 py-2 text-sm rounded-full',
@@ -35,7 +35,7 @@ export function NeonButton({
   return (
     <motion.button
       disabled={disabled}
-      className={`touch-manipulation border-4 uppercase font-display font-black tracking-wide text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] transition-all duration-200 backdrop-blur-sm outline-none focus-visible:ring-4 focus-visible:ring-neon-cyan/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0614] disabled:text-white/75 disabled:opacity-45 disabled:cursor-not-allowed disabled:shadow-none ${variants[variant]} ${sizes[size]} ${className}`}
+      className={`touch-manipulation border-4 uppercase font-display font-black tracking-wide text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] transition-all duration-200 backdrop-blur-sm outline-none focus-visible:ring-4 focus-visible:ring-offset-2 focus-visible:ring-offset-dark-darker disabled:text-white/75 disabled:opacity-45 disabled:cursor-not-allowed disabled:shadow-none ${variants[variant]} ${sizes[size]} ${className}`}
       whileHover={
         disabled
           ? {}

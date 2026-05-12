@@ -51,7 +51,7 @@ export function GlassCard({
       role={interactive ? 'button' : undefined}
       className={`transition-colors duration-300 ${baseSticker} ${
         interactive
-          ? `cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0614] ${glowClasses[glowColor]}`
+          ? `cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-dark-darker ${glowClasses[glowColor]}`
           : ''
       } ${className}`}
       whileHover={interactive ? hoverMotion : {}}

@@ -2,17 +2,22 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { RadarIcon } from 'lucide-react';
 import { StickerAvatar } from '../components/game/StickerAvatar';
+import { GlassCard } from '../components/ui/GlassCard';
 import { NeonButton } from '../components/ui/NeonButton';
 import { SectionHeading } from '../components/ui/SectionHeading';
 import { ScreenFrame } from '../components/ui/ScreenFrame';
 import { useHitBowProgress } from '../context/HitBowProgressContext';
-import { MAPS, DEFAULT_MAP_ID } from '../game/maps';
+import { getMapById } from '../game/maps';
 import type { MapId } from '../types';
+
 interface MatchmakingScreenProps {
+  mapId: MapId;
   onMatchFound: (mapId: MapId) => void;
   onCancel: () => void;
 }
+
 export function MatchmakingScreen({
+  mapId,
   onMatchFound,
   onCancel
 }: MatchmakingScreenProps) {
@@ -22,9 +27,9 @@ export function MatchmakingScreen({
     'searching' | 'found' | 'cancelled' | 'error'
   >('searching');
   const [attempt, setAttempt] = useState(1);
-  const [selectedMapId, setSelectedMapId] = useState<MapId>(DEFAULT_MAP_ID);
   const enemyName = 'SKULL RAIDER';
   const enemyRank = 14;
+  const arena = getMapById(mapId);
 
   useEffect(() => {
     let done = false;
@@ -36,7 +41,7 @@ export function MatchmakingScreen({
       setStatus(shouldFail ? 'error' : 'found');
       if (!shouldFail) {
         matchFoundTimer = window.setTimeout(() => {
-          if (!done) onMatchFound(selectedMapId);
+          if (!done) onMatchFound(mapId);
         }, 1500);
       }
     }, 2200);
@@ -47,7 +52,7 @@ export function MatchmakingScreen({
         window.clearTimeout(matchFoundTimer);
       }
     };
-  }, [onMatchFound, attempt, selectedMapId]);
+  }, [onMatchFound, attempt, mapId]);
   return (
     <motion.div
       className="relative min-h-dvh h-dvh w-full overflow-hidden"
@@ -70,7 +75,7 @@ export function MatchmakingScreen({
         contentClassName="items-center justify-center">
         {status === 'searching' ?
         <motion.div
-          className="flex flex-col items-center z-10"
+          className="z-10 flex w-full max-w-md flex-col items-center px-4"
           initial={{
             scale: 0.8,
             opacity: 0
@@ -83,8 +88,10 @@ export function MatchmakingScreen({
             scale: 0.8,
             opacity: 0
           }}>
-
-          <div className="relative mb-8">
+          <GlassCard
+            variant="default"
+            className="w-full border-2 border-neon-cyan/25 bg-dark-card/80 p-6 shadow-glass backdrop-blur-md sm:p-8">
+          <div className="relative mb-8 flex justify-center">
             <motion.div
             className="absolute inset-0 border-2 border-neon-cyan rounded-full"
             animate={
@@ -137,37 +144,19 @@ export function MatchmakingScreen({
             className="mt-1">
             You vs a local bot, not real PvP
           </SectionHeading>
-          <div className="mt-5 w-full max-w-3xl px-4">
-            <p className="mb-2 text-center text-xs font-display uppercase tracking-wider text-gray-400">
-              Select map
-            </p>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {MAPS.map((map) => {
-                const selected = selectedMapId === map.id;
-                return (
-                  <button
-                    key={map.id}
-                    type="button"
-                    className={`min-h-[44px] rounded-xl border-2 px-2 py-2 text-left transition ${
-                      selected
-                        ? 'border-neon-cyan bg-neon-cyan/15 ring-2 ring-neon-cyan/30'
-                        : 'border-white/20 bg-dark-card/70 hover:border-neon-cyan/55'
-                    }`}
-                    aria-label={`Select ${map.name}`}
-                    onClick={() => setSelectedMapId(map.id)}>
-                    <div
-                      className="mb-1 h-12 w-full rounded-md border border-white/20 bg-cover bg-center"
-                      style={{ backgroundImage: `url(${map.previewSrc})` }}
-                    />
-                    <p className="font-display text-[11px] font-bold text-white">
-                      {map.name}
-                    </p>
-                    <p className="font-display text-[10px] text-gray-300">
-                      {map.theme}
-                    </p>
-                  </button>
-                );
-              })}
+          <div className="mt-5 flex w-full items-center gap-3 rounded-xl border border-white/12 bg-dark-darker/60 p-3">
+            <div
+              className="h-14 w-24 shrink-0 rounded-lg border border-white/15 bg-cover bg-center shadow-inner"
+              style={{ backgroundImage: `url(${arena.previewSrc})` }}
+            />
+            <div className="min-w-0 text-left">
+              <p className="font-display text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                Arena
+              </p>
+              <p className="truncate font-display text-sm font-bold text-white">
+                {arena.name}
+              </p>
+              <p className="truncate font-display text-xs text-gray-400">{arena.theme}</p>
             </div>
           </div>
           <NeonButton
@@ -180,6 +169,7 @@ export function MatchmakingScreen({
             }}>
             Cancel
           </NeonButton>
+          </GlassCard>
         </motion.div> :
       status === 'error' ? (
       <motion.div

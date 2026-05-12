@@ -191,7 +191,7 @@ export function VictoryScreen({
           className="w-full">
           <GlassCard
             glowColor={isWin ? 'cyan' : 'magenta'}
-            className="flex w-full flex-col gap-6 p-4 sm:gap-8 sm:p-8">
+            className="flex w-full flex-col gap-6 border border-white/12 p-4 shadow-glass backdrop-blur-md sm:gap-8 sm:p-8">
             <div className="flex flex-col gap-4 border-b border-white/10 pb-4 sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:pb-6">
               <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
                 <div

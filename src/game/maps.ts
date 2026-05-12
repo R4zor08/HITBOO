@@ -1,55 +1,103 @@
 import type { MapDefinition, MapId } from '../types';
 
-export const DEFAULT_MAP_ID: MapId = 'sunset_canyon';
+/** Bright default for practice and first-time readability. */
+export const DEFAULT_MAP_ID: MapId = 'golden_canopy';
 
+/**
+ * Arena art: `public/maps/*.jpg` (user-provided). Order is display order in pickers.
+ * Pairing: birch night, cave, railed deck, god-ray forest, lakeside, trail, city view, highway, warm canopy, alpine.
+ */
 export const MAPS: MapDefinition[] = [
   {
-    id: 'sunset_canyon',
-    name: 'Sunset Canyon',
-    theme: 'Bright valley',
-    biome: 'Open grassland',
-    previewSrc: '/maps/sunset-canyon.png',
-    backgroundSrc: '/maps/sunset-canyon.png',
-    overlayTint: 'linear-gradient(180deg, rgba(11,25,52,0.24), rgba(18,32,64,0.12))'
+    id: 'golden_canopy',
+    name: 'Golden Canopy',
+    theme: 'Sun-drenched forest',
+    biome: 'Warm clearing',
+    previewSrc: '/maps/golden-canopy.jpg',
+    backgroundSrc: '/maps/golden-canopy.jpg',
+    overlayTint: 'linear-gradient(180deg, rgba(42,32,8,0.22), rgba(24,18,6,0.12))'
   },
   {
-    id: 'raider_outpost',
-    name: 'Raider Outpost',
-    theme: 'Savage encampment',
-    biome: 'Camp battleground',
-    previewSrc: '/maps/raider-outpost.png',
-    backgroundSrc: '/maps/raider-outpost.png',
-    overlayTint: 'linear-gradient(180deg, rgba(25,24,16,0.26), rgba(29,32,22,0.18))',
-    windBias: 2,
+    id: 'lakeside_clearing',
+    name: 'Lakeside Clearing',
+    theme: 'Still water',
+    biome: 'Forest pond',
+    previewSrc: '/maps/lakeside-clearing.jpg',
+    backgroundSrc: '/maps/lakeside-clearing.jpg',
+    overlayTint: 'linear-gradient(180deg, rgba(10,28,36,0.3), rgba(8,20,28,0.16))'
   },
   {
-    id: 'forest_camp',
-    name: 'Forest Camp',
-    theme: 'Woodland dawn',
-    biome: 'Dense woods',
-    previewSrc: '/maps/forest-camp.png',
-    backgroundSrc: '/maps/forest-camp.png',
-    overlayTint: 'linear-gradient(180deg, rgba(7,34,31,0.34), rgba(5,21,17,0.24))'
+    id: 'skyline_grove',
+    name: 'Skyline Grove',
+    theme: 'City on the horizon',
+    biome: 'Misty woodland',
+    previewSrc: '/maps/skyline-grove.jpg',
+    backgroundSrc: '/maps/skyline-grove.jpg',
+    overlayTint: 'linear-gradient(180deg, rgba(12,24,40,0.28), rgba(16,28,44,0.14))'
   },
   {
-    id: 'ruined_plains',
-    name: 'Ruined Plains',
-    theme: 'Ancient relics',
-    biome: 'Ancient desert',
-    previewSrc: '/maps/ruined-plains.png',
-    backgroundSrc: '/maps/ruined-plains.png',
-    overlayTint: 'linear-gradient(180deg, rgba(31,20,13,0.28), rgba(36,20,8,0.22))',
-    windBias: 1,
+    id: 'forest_trail',
+    name: 'Forest Trail',
+    theme: 'Dirt path',
+    biome: 'Pine foothills',
+    previewSrc: '/maps/forest-trail.jpg',
+    backgroundSrc: '/maps/forest-trail.jpg',
+    overlayTint: 'linear-gradient(180deg, rgba(8,30,24,0.32), rgba(6,22,18,0.16))'
   },
   {
-    id: 'desert_waste',
-    name: 'Desert Waste',
-    theme: 'Open badlands',
-    biome: 'Arid flats',
-    previewSrc: '/maps/desert-waste.png',
-    backgroundSrc: '/maps/desert-waste.png',
-    overlayTint: 'linear-gradient(180deg, rgba(31,23,18,0.28), rgba(24,16,10,0.18))',
-    windBias: 2
+    id: 'alpine_dawn',
+    name: 'Alpine Dawn',
+    theme: 'Sunrise peaks',
+    biome: 'High meadow',
+    previewSrc: '/maps/alpine-dawn.jpg',
+    backgroundSrc: '/maps/alpine-dawn.jpg',
+    overlayTint: 'linear-gradient(180deg, rgba(12,20,44,0.26), rgba(20,28,48,0.12))'
+  },
+  {
+    id: 'mountain_highway',
+    name: 'Mountain Highway',
+    theme: 'Road & peaks',
+    biome: 'Scenic route',
+    previewSrc: '/maps/mountain-highway.jpg',
+    backgroundSrc: '/maps/mountain-highway.jpg',
+    overlayTint: 'linear-gradient(180deg, rgba(8,22,38,0.32), rgba(10,26,42,0.16))'
+  },
+  {
+    id: 'pine_ridge_deck',
+    name: 'Pine Ridge Deck',
+    theme: 'Railed overlook',
+    biome: 'Mountain deck',
+    previewSrc: '/maps/pine-ridge-deck.jpg',
+    backgroundSrc: '/maps/pine-ridge-deck.jpg',
+    overlayTint: 'linear-gradient(180deg, rgba(10,24,40,0.28), rgba(14,28,44,0.14))',
+    windBias: 1
+  },
+  {
+    id: 'birch_night_glade',
+    name: 'Birch Night Glade',
+    theme: 'Moonlit woods',
+    biome: 'Birch silhouettes',
+    previewSrc: '/maps/birch-night-glade.jpg',
+    backgroundSrc: '/maps/birch-night-glade.jpg',
+    overlayTint: 'linear-gradient(180deg, rgba(8,14,32,0.45), rgba(12,20,40,0.22))'
+  },
+  {
+    id: 'cavern_glow',
+    name: 'Cavern Glow',
+    theme: 'Deep cave',
+    biome: 'Stalactite hall',
+    previewSrc: '/maps/cavern-glow.jpg',
+    backgroundSrc: '/maps/cavern-glow.jpg',
+    overlayTint: 'linear-gradient(180deg, rgba(18,12,8,0.38), rgba(28,22,10,0.2))'
+  },
+  {
+    id: 'midnight_grove',
+    name: 'Midnight Grove',
+    theme: 'God rays & fog',
+    biome: 'Night forest',
+    previewSrc: '/maps/midnight-grove.jpg',
+    backgroundSrc: '/maps/midnight-grove.jpg',
+    overlayTint: 'linear-gradient(180deg, rgba(18,8,32,0.4), rgba(10,6,24,0.22))'
   }
 ];
 
