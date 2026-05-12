@@ -56,6 +56,10 @@ interface BattlefieldProps {
   onReady?: () => void;
   /** Local 2P: scale damage by impact region vs defender anchor. */
   bodyPartDamage?: boolean;
+  /** Slingshot aim visual for P1 sticker. */
+  playerStickerAim?: { isCharging: boolean; aimPullDeg: number } | null;
+  /** Slingshot aim visual for P2 sticker. */
+  enemyStickerAim?: { isCharging: boolean; aimPullDeg: number } | null;
 }
 
 export function Battlefield({
@@ -71,7 +75,9 @@ export function Battlefield({
   playerCharacterId = null,
   enemyCharacterId = null,
   onReady,
-  bodyPartDamage = false
+  bodyPartDamage = false,
+  playerStickerAim = null,
+  enemyStickerAim = null
 }: BattlefieldProps) {
   const [projectile, setProjectile] = useState<{
     x: number;
@@ -94,6 +100,7 @@ export function Battlefield({
     damage: number;
   } | null>(null);
   const [cameraShake, setCameraShake] = useState(false);
+  const [hitFlash, setHitFlash] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const requestRef = useRef<number>();
   const physicsState = useRef({
@@ -220,6 +227,10 @@ export function Battlefield({
           damage
         });
         setCameraShake(true);
+        if (!reduceMotion) {
+          setHitFlash(true);
+          setTimeout(() => setHitFlash(false), 140);
+        }
         setTimeout(() => setCameraShake(false), 500);
         setTimeout(() => setHitEffect(null), 1500);
         setTimeout(() => {
@@ -341,6 +352,8 @@ export function Battlefield({
         hp={playerHp}
         facingRight={true}
         reduceMotion={reduceMotion}
+        aimPullDeg={playerStickerAim?.aimPullDeg}
+        isCharging={playerStickerAim?.isCharging}
       />
 
       <CharacterSticker
@@ -353,7 +366,52 @@ export function Battlefield({
         hp={enemyHp}
         facingRight={false}
         reduceMotion={reduceMotion}
+        aimPullDeg={enemyStickerAim?.aimPullDeg}
+        isCharging={enemyStickerAim?.isCharging}
       />
+
+      {viz && projectile?.active && (
+        <>
+          <div
+            className="pointer-events-none absolute z-[36]"
+            style={{
+              left: `${projectile.x}%`,
+              top: `${projectile.y}%`,
+              transform: 'translate(-50%, -50%)',
+              width: '1.75rem',
+              height: '1.75rem',
+              borderRadius: '9999px',
+              background:
+                viz.shooterIsPlayer
+                  ? 'radial-gradient(circle, rgba(0,240,255,0.45), transparent 70%)'
+                  : 'radial-gradient(circle, rgba(255,51,85,0.42), transparent 70%)',
+              filter: 'blur(10px)',
+              opacity: 0.85
+            }}
+            aria-hidden
+          />
+          {!reduceMotion ? (
+            <div
+              className="pointer-events-none absolute z-[35]"
+              style={{
+                left: `${projectile.x}%`,
+                top: `${projectile.y}%`,
+                transform: `translate(-50%, -50%) rotate(${rotDeg}deg) scaleX(1.2)`,
+                width: '2.25rem',
+                height: '0.55rem',
+                borderRadius: '9999px',
+                background:
+                  viz.shooterIsPlayer
+                    ? 'linear-gradient(90deg, transparent, rgba(0,240,255,0.35), transparent)'
+                    : 'linear-gradient(90deg, transparent, rgba(255,51,85,0.32), transparent)',
+                filter: 'blur(6px)',
+                opacity: 0.55
+              }}
+              aria-hidden
+            />
+          ) : null}
+        </>
+      )}
 
       {viz && projectile?.active && (
         <motion.div
@@ -396,6 +454,15 @@ export function Battlefield({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {hitFlash && !reduceMotion ? (
+        <motion.div
+          className="pointer-events-none absolute inset-0 z-[95] bg-white"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 0.22, 0] }}
+          transition={{ duration: 0.24, ease: 'easeOut' }}
+        />
+      ) : null}
     </motion.div>
   );
 }

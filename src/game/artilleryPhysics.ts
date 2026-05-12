@@ -141,6 +141,38 @@ export function sampleTrajectoryPoints(
   return pts;
 }
 
+/** Arc samples plus last simulated point when ground/offscreen is reached (for impact marker). */
+export function sampleTrajectoryWithTerminal(
+  params: Omit<ShotParams, 'targetX' | 'targetY'>,
+  maxPoints = 100,
+  sampleEvery = 2
+): { points: PointPct[]; terminal: PointPct } {
+  const wind = windAccelPerFrame(params.windSpeed, params.windDirection);
+  const v0 = initialVelocity(
+    params.power,
+    params.angleDeg,
+    params.shooterFacingRight,
+    params.velocityScale
+  );
+  let body: PhysicsBody = {
+    x: params.startX,
+    y: params.startY,
+    vx: v0.vx,
+    vy: v0.vy
+  };
+  const pts: PointPct[] = [{ x: body.x, y: body.y }];
+  let terminal: PointPct = { x: body.x, y: body.y };
+  for (let i = 0; i < MAX_SIM_STEPS; i++) {
+    body = simulateStep(body, wind);
+    const { x, y } = body;
+    terminal = { x, y };
+    if (i % sampleEvery === 0) pts.push({ x, y });
+    if (y > GROUND_Y || x < OFFSCREEN_X_MIN || x > OFFSCREEN_X_MAX) break;
+    if (pts.length >= maxPoints) break;
+  }
+  return { points: pts, terminal };
+}
+
 export function computeHitDamage(
   baseDamage: number,
   powerPct: number

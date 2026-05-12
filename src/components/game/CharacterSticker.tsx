@@ -1,4 +1,3 @@
-import React from 'react';
 import { motion } from 'framer-motion';
 import type { CharacterId } from '../../game/charactersCatalog';
 import { DEFAULT_PLAYER_CHARACTER_ID, DEFAULT_ENEMY_CHARACTER_ID } from '../../game/charactersCatalog';
@@ -20,6 +19,10 @@ type CharacterStickerProps = {
   hp: number;
   facingRight: boolean;
   reduceMotion: boolean;
+  /** Degrees from anchor→pointer; subtle lean while slingshot aiming. */
+  aimPullDeg?: number;
+  /** Stronger glow while building shot power. */
+  isCharging?: boolean;
 };
 
 export function CharacterSticker({
@@ -31,7 +34,9 @@ export function CharacterSticker({
   isTurn,
   hp,
   facingRight,
-  reduceMotion
+  reduceMotion,
+  aimPullDeg,
+  isCharging = false
 }: CharacterStickerProps) {
   const isDead = hp <= 0;
 
@@ -46,10 +51,18 @@ export function CharacterSticker({
     ];
 
   const glowTint = side === 'player' ? accentHex : ENEMY_GLOW_HEX;
+  const chargeBoost = isCharging && !reduceMotion ? 1.35 : 1;
   const glowFilter =
     side === 'player'
-      ? `drop-shadow(0 4px 0 ${accentHex}55) drop-shadow(0 0 10px ${glowTint})`
-      : `drop-shadow(0 4px 0 ${ENEMY_GLOW_HEX}88) drop-shadow(0 0 10px ${ENEMY_GLOW_HEX})`;
+      ? `drop-shadow(0 4px 0 ${accentHex}55) drop-shadow(0 0 ${10 * chargeBoost}px ${glowTint})`
+      : `drop-shadow(0 4px 0 ${ENEMY_GLOW_HEX}88) drop-shadow(0 0 ${
+          10 * chargeBoost
+        }px ${ENEMY_GLOW_HEX})`;
+
+  const leanDeg =
+    aimPullDeg != null && !reduceMotion && !isDead
+      ? Math.max(-16, Math.min(16, aimPullDeg * 0.11 * (facingRight ? -1 : 1)))
+      : 0;
 
   return (
     <motion.div
@@ -83,9 +96,15 @@ export function CharacterSticker({
         />
       )}
 
-      <svg viewBox="0 0 100 168" className="w-full h-full overflow-visible">
-        <Body accentHex={accentHex} isDead={isDead} stroke={SPRITE_STROKE} />
-      </svg>
+      <motion.div
+        className="flex h-full w-full flex-col items-center justify-end"
+        style={{ transformOrigin: '50% 100%' }}
+        animate={{ rotate: leanDeg }}
+        transition={{ type: 'spring', stiffness: 260, damping: 22 }}>
+        <svg viewBox="0 0 100 168" className="h-full w-full overflow-visible">
+          <Body accentHex={accentHex} isDead={isDead} stroke={SPRITE_STROKE} />
+        </svg>
+      </motion.div>
     </motion.div>
   );
 }

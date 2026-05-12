@@ -1,5 +1,3 @@
-import React from 'react';
-
 export type CharacterInnerProps = {
   accentHex: string;
   isDead: boolean;

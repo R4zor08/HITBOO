@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 
 type ParticleBackgroundProps = {
   /** When true, draw a static frame once (no animation loop). */

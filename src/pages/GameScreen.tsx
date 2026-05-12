@@ -14,6 +14,8 @@ import {
   type FirePayload,
   type ShotResult
 } from '../components/game/Battlefield';
+import { AimInteractionLayer } from '../components/game/AimInteractionLayer';
+import { AimTrajectoryOverlay } from '../components/game/AimTrajectoryOverlay';
 import { useHitBowProgress } from '../context/HitBowProgressContext';
 import { NeonButton } from '../components/ui/NeonButton';
 import { ProgressBar } from '../components/ui/ProgressBar';
@@ -28,8 +30,13 @@ import {
   PROJECTILE_START_Y_OFFSET,
   applyAimError,
   findBestAim,
-  sampleTrajectoryPoints
+  sampleTrajectoryWithTerminal
 } from '../game/artilleryPhysics';
+import {
+  clientToArenaPercent,
+  pointerNearAnchor,
+  slingshotAimFromPointer
+} from '../game/aimFromDrag';
 import { getEnemyWeapon, WEAPON_PRESETS } from '../game/weapons';
 import { playBlip, playHit, playMiss } from '../game/gameAudio';
 import type { MatchResult } from '../game/matchResult';
@@ -134,14 +141,15 @@ export function GameScreen({
     }
   }, [progress.settings.difficulty]);
 
-  const [showMatchTips, setShowMatchTips] = useState(false);
+  const [onboardingHintVisible, setOnboardingHintVisible] = useState(false);
+  const [matchHelpOpen, setMatchHelpOpen] = useState(false);
 
   useEffect(() => {
     if (local2p) {
-      setShowMatchTips(false);
+      setOnboardingHintVisible(false);
       return;
     }
-    setShowMatchTips(
+    setOnboardingHintVisible(
       localStorage.getItem(STORAGE.matchOnboardingDismissed) !== '1'
     );
   }, [local2p]);
@@ -152,20 +160,25 @@ export function GameScreen({
     } catch {
       /* ignore */
     }
-    setShowMatchTips(false);
+    setOnboardingHintVisible(false);
+    setMatchHelpOpen(false);
   }, []);
-
-  const showMatchTipsRef = useRef(showMatchTips);
-  showMatchTipsRef.current = showMatchTips;
 
   const [isAiming, setIsAiming] = useState(false);
   const [aimAngle, setAimAngle] = useState(45);
   const [aimPower, setAimPower] = useState(0);
-  const aimAreaRef = useRef<HTMLDivElement>(null);
+  const [aimPullDeg, setAimPullDeg] = useState(0);
+  const [releaseShaking, setReleaseShaking] = useState(false);
+  const [turnNudgeX, setTurnNudgeX] = useState(0);
+  const gameRootRef = useRef<HTMLDivElement>(null);
+  const slingshotDraggingRef = useRef(false);
+  const aimPowerRef = useRef(0);
+  const aimAngleRef = useRef(45);
+  const aimSensitivityRef = useRef(progress.settings.defaultAimSensitivity);
+  const isAimingRef = useRef(false);
   const [aimSensitivity, setAimSensitivity] = useState(
     progress.settings.defaultAimSensitivity
   );
-  const maxDistance = 300 / aimSensitivity;
 
   /** Sole volume UX is main-menu Settings; in-game HUD uses this derived mute only. */
   const audioMuted = useMemo(
@@ -210,6 +223,28 @@ export function GameScreen({
   canAimRef.current = canAim;
 
   useEffect(() => {
+    aimSensitivityRef.current = aimSensitivity;
+  }, [aimSensitivity]);
+
+  useEffect(() => {
+    aimPowerRef.current = aimPower;
+  }, [aimPower]);
+
+  useEffect(() => {
+    aimAngleRef.current = aimAngle;
+  }, [aimAngle]);
+
+  useEffect(() => {
+    isAimingRef.current = isAiming;
+  }, [isAiming]);
+
+  useEffect(() => {
+    setTurnNudgeX(isPlayerTurn ? 1.6 : -1.6);
+    const id = window.setTimeout(() => setTurnNudgeX(0), 480);
+    return () => window.clearTimeout(id);
+  }, [isPlayerTurn]);
+
+  useEffect(() => {
     setAimSensitivity(progress.settings.defaultAimSensitivity);
   }, [progress.settings.defaultAimSensitivity]);
 
@@ -234,13 +269,15 @@ export function GameScreen({
   const isPlayerTurnRef = useRef(isPlayerTurn);
   isPlayerTurnRef.current = isPlayerTurn;
 
-  const previewPoints = useMemo(() => {
-    if (!isAiming || aimPower <= 5) return [];
+  const trajectoryPreview = useMemo(() => {
+    if (!isAiming || aimPower <= 5) {
+      return { points: [] as { x: number; y: number }[], terminal: null as { x: number; y: number } | null };
+    }
     const facing = isPlayerTurn;
     const startX = isPlayerTurn ? P1_POS.x : P2_POS.x;
     const startY =
       (isPlayerTurn ? P1_POS.y : P2_POS.y) + PROJECTILE_START_Y_OFFSET;
-    return sampleTrajectoryPoints({
+    return sampleTrajectoryWithTerminal({
       power: aimPower,
       angleDeg: aimAngle,
       shooterFacingRight: facing,
@@ -260,25 +297,48 @@ export function GameScreen({
     wind.direction
   ]);
 
-  /** 0–1 charge tint for aim box (cyan → magenta). */
-  const aimChargeBlend = useMemo(() => {
-    const t = aimPower > 5 ? Math.min(1, (aimPower - 5) / 95) : 0;
-    if (t <= 0) return null;
-    const r = Math.round(255 * t);
-    const g = Math.round(240 * (1 - t));
-    const b = Math.round(255 * (1 - t) + 229 * t);
-    return { t, r, g, b };
-  }, [aimPower]);
+  const previewPoints = trajectoryPreview.points;
+  const previewTerminal = trajectoryPreview.terminal;
 
-  const aimAreaStyle = useMemo((): React.CSSProperties => {
-    const base =
-      'inset 0 0 40px rgba(0,240,255,0.12), 0 0 20px rgba(0,0,0,0.3)';
-    if (!aimChargeBlend) return { boxShadow: base };
-    const { r, g, b } = aimChargeBlend;
-    return {
-      boxShadow: `${base}, inset 0 0 48px rgba(${r},${g},${b},0.22), 0 0 28px rgba(${r},${g},${b},0.42)`
-    };
-  }, [aimChargeBlend]);
+  const sceneCamera = useMemo(() => {
+    if (reduceMotion) {
+      return { scale: 1, x: turnNudgeX, y: 0 };
+    }
+    const aimScale = isAiming ? 1 + (aimPower / 100) * 0.045 : 1;
+    const panX =
+      (isAiming
+        ? (isPlayerTurn ? 1.35 : -1.35) * (aimPower / 100) * 1.1
+        : 0) + turnNudgeX;
+    const panY = isAiming ? -0.75 * (aimPower / 100) : 0;
+    return { scale: aimScale, x: panX, y: panY };
+  }, [reduceMotion, isAiming, aimPower, isPlayerTurn, turnNudgeX]);
+
+  const previewStroke = useMemo(
+    () =>
+      local2p
+        ? isPlayerTurn
+          ? progress.playerAccentHex
+          : '#ff00e5'
+        : progress.playerAccentHex,
+    [local2p, isPlayerTurn, progress.playerAccentHex]
+  );
+
+  const projectileStart = useMemo(() => {
+    const startX = isPlayerTurn ? P1_POS.x : P2_POS.x;
+    const startY =
+      (isPlayerTurn ? P1_POS.y : P2_POS.y) + PROJECTILE_START_Y_OFFSET;
+    return { startX, startY };
+  }, [isPlayerTurn]);
+
+  const playerStickerAim = useMemo(() => {
+    if (!canAim || !isAiming || !isPlayerTurn) return null;
+    return { isCharging: aimPower > 5, aimPullDeg };
+  }, [canAim, isAiming, isPlayerTurn, aimPower, aimPullDeg]);
+
+  const enemyStickerAim = useMemo(() => {
+    if (!canAim || !isAiming || isPlayerTurn) return null;
+    return { isCharging: aimPower > 5, aimPullDeg };
+  }, [canAim, isAiming, isPlayerTurn, aimPower, aimPullDeg]);
 
   const windArrowMotion = useMemo(() => {
     if (reduceMotion) {
@@ -305,10 +365,6 @@ export function GameScreen({
       }
     };
   }, [reduceMotion, wind.speed, wind.direction]);
-
-  const aimDecorLit = isAiming || aimPower > 5;
-  const aimDecorTransition =
-    reduceMotion ? '' : 'transition-opacity duration-200 ease-out';
 
   useEffect(() => {
     const onFs = () =>
@@ -515,59 +571,21 @@ export function GameScreen({
     ]
   );
 
-  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!canAim || showMatchTipsRef.current) return;
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
-    }
-    setIsAiming(true);
-    updateAim(e);
-  };
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (!isAiming || !canAim) return;
-    updateAim(e);
-  };
-  const updateAim = (e: React.PointerEvent) => {
-    if (!aimAreaRef.current) return;
-    const rect = aimAreaRef.current.getBoundingClientRect();
-    const startX = rect.left + 50;
-    const startY = rect.bottom - 50;
-    const dx = e.clientX - startX;
-    const dy = startY - e.clientY;
-    let angle = Math.atan2(dy, dx) * (180 / Math.PI);
-    angle = Math.max(0, Math.min(90, angle));
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    const power = Math.min(100, (distance / maxDistance) * 100);
-    setAimAngle(angle);
-    setAimPower(power);
-  };
-  const endAim = (e?: React.PointerEvent<HTMLDivElement>) => {
-    if (e?.currentTarget && e.pointerId != null) {
-      try {
-        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-          e.currentTarget.releasePointerCapture(e.pointerId);
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-    if (!isAiming || !canAim) return;
-    setIsAiming(false);
-  };
+  const fireFromSnapshot = useCallback(() => {
+    if (!canAimRef.current) return;
+    const power = aimPowerRef.current;
+    const angle = aimAngleRef.current;
+    if (power < 5) return;
 
-  const handleFire = () => {
-    if (!canAim || aimPower < 5 || showMatchTipsRef.current) return;
     if (local2p && p1LoadoutWeapon && p2LoadoutWeapon) {
-      if (isPlayerTurn) {
+      if (isPlayerTurnRef.current) {
         updateMatchStats((prev) => ({
           ...prev,
           playerShots: prev.playerShots + 1
         }));
         setTriggerFire({
-          power: aimPower,
-          angle: aimAngle,
+          power,
+          angle,
           timestamp: Date.now(),
           velocityScale: p1LoadoutWeapon.velocityScale,
           baseDamage: p1LoadoutWeapon.damage,
@@ -579,8 +597,8 @@ export function GameScreen({
           enemyShots: prev.enemyShots + 1
         }));
         setTriggerFire({
-          power: aimPower,
-          angle: aimAngle,
+          power,
+          angle,
           timestamp: Date.now(),
           velocityScale: p2LoadoutWeapon.velocityScale,
           baseDamage: p2LoadoutWeapon.damage,
@@ -588,10 +606,13 @@ export function GameScreen({
         });
       }
     } else {
-      updateMatchStats((prev) => ({ ...prev, playerShots: prev.playerShots + 1 }));
+      updateMatchStats((prev) => ({
+        ...prev,
+        playerShots: prev.playerShots + 1
+      }));
       setTriggerFire({
-        power: aimPower,
-        angle: aimAngle,
+        power,
+        angle,
         timestamp: Date.now(),
         velocityScale: selectedWeapon.velocityScale,
         baseDamage: selectedWeapon.damage,
@@ -599,16 +620,124 @@ export function GameScreen({
       });
     }
     setIsAiming(false);
+    setAimPullDeg(0);
+    if (!reduceMotion) {
+      setReleaseShaking(true);
+      window.setTimeout(() => setReleaseShaking(false), 340);
+    }
     playBlip(440, 0.08, audioMuted);
-  };
+  }, [
+    local2p,
+    p1LoadoutWeapon,
+    p2LoadoutWeapon,
+    selectedWeapon,
+    updateMatchStats,
+    audioMuted,
+    reduceMotion
+  ]);
 
-  const handleFireRef = useRef(handleFire);
-  handleFireRef.current = handleFire;
+  const handleFire = useCallback(() => {
+    if (!canAim || aimPower < 5) return;
+    aimPowerRef.current = aimPower;
+    aimAngleRef.current = aimAngle;
+    fireFromSnapshot();
+  }, [canAim, aimPower, aimAngle, fireFromSnapshot]);
+
+  const handleSlingshotPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!canAimRef.current || settingsOpen) return;
+      const root = gameRootRef.current;
+      if (!root) return;
+      const pct = clientToArenaPercent(
+        e.clientX,
+        e.clientY,
+        root.getBoundingClientRect()
+      );
+      const ax = isPlayerTurnRef.current ? P1_POS.x : P2_POS.x;
+      const ay = isPlayerTurnRef.current ? P1_POS.y : P2_POS.y;
+      if (!pointerNearAnchor(pct.x, pct.y, ax, ay, 10)) return;
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      slingshotDraggingRef.current = true;
+      setIsAiming(true);
+      const facing = isPlayerTurnRef.current;
+      const r = slingshotAimFromPointer(
+        pct,
+        { x: ax, y: ay },
+        facing,
+        aimSensitivityRef.current
+      );
+      setAimAngle(r.aimAngle);
+      setAimPower(r.aimPower);
+      setAimPullDeg(r.aimPullDeg);
+      aimAngleRef.current = r.aimAngle;
+      aimPowerRef.current = r.aimPower;
+    },
+    [settingsOpen]
+  );
+
+  const handleSlingshotPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!slingshotDraggingRef.current || !canAimRef.current) return;
+      const root = gameRootRef.current;
+      if (!root) return;
+      const pct = clientToArenaPercent(
+        e.clientX,
+        e.clientY,
+        root.getBoundingClientRect()
+      );
+      const ax = isPlayerTurnRef.current ? P1_POS.x : P2_POS.x;
+      const ay = isPlayerTurnRef.current ? P1_POS.y : P2_POS.y;
+      const facing = isPlayerTurnRef.current;
+      const r = slingshotAimFromPointer(
+        pct,
+        { x: ax, y: ay },
+        facing,
+        aimSensitivityRef.current
+      );
+      setAimAngle(r.aimAngle);
+      setAimPower(r.aimPower);
+      setAimPullDeg(r.aimPullDeg);
+      aimAngleRef.current = r.aimAngle;
+      aimPowerRef.current = r.aimPower;
+    },
+    []
+  );
+
+  const handleSlingshotPointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      try {
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        }
+      } catch {
+        /* ignore */
+      }
+      const wasDragging = slingshotDraggingRef.current;
+      slingshotDraggingRef.current = false;
+      if (!wasDragging) return;
+      setIsAiming(false);
+      setAimPullDeg(0);
+      if (aimPowerRef.current >= 5) {
+        fireFromSnapshot();
+      }
+    },
+    [fireFromSnapshot]
+  );
+
+  const handleSlingshotPointerCancel = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      handleSlingshotPointerUp(e);
+    },
+    [handleSlingshotPointerUp]
+  );
 
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
-      if (!canAimRef.current || settingsOpen || showMatchTipsRef.current)
-        return;
+      if (!canAimRef.current || settingsOpen) return;
       const t = ev.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
 
@@ -633,12 +762,12 @@ export function GameScreen({
       } else if (k === 'ArrowRight' || k === 'd' || k === 'D') {
         setAimAngle((a) => Math.min(90, a + 2));
       } else if (k === ' ' || k === 'Enter') {
-        handleFireRef.current();
+        handleFire();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [settingsOpen]);
+  }, [settingsOpen, handleFire]);
 
   useEffect(() => {
     if (!settingsOpen) return;
@@ -664,65 +793,100 @@ export function GameScreen({
     }
   };
 
-  const polylinePoints = previewPoints.map((p) => `${p.x},${p.y}`).join(' ');
-  const previewStroke = useMemo(
-    () =>
-      local2p
-        ? isPlayerTurn
-          ? progress.playerAccentHex
-          : '#ff00e5'
-        : progress.playerAccentHex,
-    [local2p, isPlayerTurn, progress.playerAccentHex]
-  );
-
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-[#0f0622] select-none touch-none">
-      <GameSceneBoundary
-        fallback={
-          <div className="absolute inset-0 z-20 flex items-center justify-center px-6">
-            <GlassCard
-              variant="sticker"
-              className="w-full max-w-xl p-7 text-center border-neon-magenta/60">
-              <h2 className="font-display text-2xl font-black text-neon-magenta">
-                Arena failed to render
-              </h2>
-              <p className="mt-2 text-sm text-gray-300 font-display">
-                We hit a scene error. Return to menu and start a new match.
-              </p>
-              <NeonButton
-                variant="secondary"
-                size="md"
-                className="mt-5"
-                onClick={onExitMatch}>
-                Back to Menu
-              </NeonButton>
-            </GlassCard>
-          </div>
+    <div
+      ref={gameRootRef}
+      className="relative w-full h-screen overflow-hidden bg-[#0f0622] select-none touch-none">
+      <motion.div
+        className="absolute inset-0 origin-[50%_72%]"
+        animate={{
+          scale: sceneCamera.scale,
+          x: sceneCamera.x,
+          y: sceneCamera.y
+        }}
+        transition={
+          reduceMotion
+            ? { duration: 0 }
+            : { type: 'spring', stiffness: 140, damping: 20 }
         }>
-        <Battlefield
-          isPlayerTurn={isPlayerTurn}
-          windSpeed={wind.speed}
-          windDirection={wind.direction}
-          playerHp={playerHp}
-          enemyHp={enemyHp}
-          triggerFire={triggerFire}
-          onShotResult={handleShotResult}
-          reduceMotion={reduceMotion}
-          playerAccentHex={progress.playerAccentHex}
-          playerCharacterId={
-            local2p && local2pLoadout
-              ? local2pLoadout.p1CharacterId
-              : progress.equippedCharacterId
+        <motion.div
+          className="absolute inset-0"
+          animate={
+            reduceMotion || !releaseShaking
+              ? { x: 0, y: 0 }
+              : { x: [0, -7, 7, -4, 4, 0], y: [0, 3, -3, 2, 0] }
           }
-          enemyCharacterId={
-            local2p && local2pLoadout
-              ? local2pLoadout.p2CharacterId
-              : progress.equippedEnemyCharacterId
-          }
-          onReady={handleArenaReady}
-          bodyPartDamage={local2p}
-        />
-      </GameSceneBoundary>
+          transition={
+            reduceMotion ? { duration: 0 } : { duration: 0.34, ease: 'easeOut' }
+          }>
+          <GameSceneBoundary
+            fallback={
+              <div className="absolute inset-0 z-20 flex items-center justify-center px-6">
+                <GlassCard
+                  variant="sticker"
+                  className="w-full max-w-xl p-7 text-center border-neon-magenta/60">
+                  <h2 className="font-display text-2xl font-black text-neon-magenta">
+                    Arena failed to render
+                  </h2>
+                  <p className="mt-2 text-sm text-gray-300 font-display">
+                    We hit a scene error. Return to menu and start a new match.
+                  </p>
+                  <NeonButton
+                    variant="secondary"
+                    size="md"
+                    className="mt-5"
+                    onClick={onExitMatch}>
+                    Back to Menu
+                  </NeonButton>
+                </GlassCard>
+              </div>
+            }>
+            <Battlefield
+              isPlayerTurn={isPlayerTurn}
+              windSpeed={wind.speed}
+              windDirection={wind.direction}
+              playerHp={playerHp}
+              enemyHp={enemyHp}
+              triggerFire={triggerFire}
+              onShotResult={handleShotResult}
+              reduceMotion={reduceMotion}
+              playerAccentHex={progress.playerAccentHex}
+              playerCharacterId={
+                local2p && local2pLoadout
+                  ? local2pLoadout.p1CharacterId
+                  : progress.equippedCharacterId
+              }
+              enemyCharacterId={
+                local2p && local2pLoadout
+                  ? local2pLoadout.p2CharacterId
+                  : progress.equippedEnemyCharacterId
+              }
+              onReady={handleArenaReady}
+              bodyPartDamage={local2p}
+              playerStickerAim={playerStickerAim}
+              enemyStickerAim={enemyStickerAim}
+            />
+          </GameSceneBoundary>
+          <AimTrajectoryOverlay
+            points={previewPoints}
+            terminal={previewTerminal}
+            startX={projectileStart.startX}
+            startY={projectileStart.startY}
+            aimAngleDeg={aimAngle}
+            facingRight={isPlayerTurn}
+            stroke={previewStroke}
+            reduceMotion={reduceMotion}
+            visible={isAiming && aimPower > 5}
+          />
+          <AimInteractionLayer
+            active={canAim && !settingsOpen}
+            onPointerDown={handleSlingshotPointerDown}
+            onPointerMove={handleSlingshotPointerMove}
+            onPointerUp={handleSlingshotPointerUp}
+            onPointerCancel={handleSlingshotPointerCancel}
+          />
+        </motion.div>
+      </motion.div>
 
       {arenaFallbackVisible && !arenaReady && (
         <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center px-6">
@@ -739,42 +903,60 @@ export function GameScreen({
         </div>
       )}
 
-      {showMatchTips && !local2p && (
-        <div className="absolute inset-0 z-[25] flex items-start justify-center pt-4 sm:pt-8 px-4 pointer-events-none">
+      {!local2p && onboardingHintVisible && (
+        <div className="pointer-events-auto absolute bottom-20 left-4 z-[22] max-w-[min(22rem,calc(100vw-2rem))]">
           <GlassCard
             variant="sticker"
-            className="max-w-lg w-full pointer-events-auto border-neon-cyan/45 p-5 space-y-4 shadow-[0_0_30px_rgba(0,240,255,0.15)]">
-            <h2 className="font-display text-lg font-black text-neon-cyan tracking-wide">
-              Quick briefing
-            </h2>
-            <ul className="text-sm text-gray-200 font-display space-y-2 list-disc pl-4 marker:text-neon-cyan">
-              <li>
-                This match is{' '}
-                <strong className="text-white">offline vs AI</strong> — no
-                real PvP queue.
-              </li>
-              <li>
-                Drag inside the aim box for angle and power, then tap{' '}
-                <strong className="text-white">FIRE</strong> (needs a little
-                power).
-              </li>
-              <li>Wind shifts after each shot — watch the HUD arrow.</li>
-              <li>
-                Standard win: bring the rival to{' '}
-                <strong className="text-white">0 HP</strong>.
-              </li>
-              {practice ? (
-                <li>
-                  Training dummy{' '}
-                  <strong className="text-neon-yellow">
-                    never reaches 0 HP
-                  </strong>{' '}
-                  so you can drill shots safely.
-                </li>
-              ) : null}
-            </ul>
+            className="space-y-3 border-neon-cyan/40 p-4 shadow-[0_0_24px_rgba(0,240,255,0.12)]">
+            <p className="font-display text-xs font-bold tracking-wide text-white">
+              Pull from your fighter to aim — release to fire (needs a little
+              power). Wind shifts each volley.
+            </p>
+            {practice ? (
+              <p className="text-[11px] text-neon-yellow font-display">
+                Practice dummy never hits 0 HP.
+              </p>
+            ) : null}
             <NeonButton size="sm" variant="primary" onClick={dismissMatchTips}>
               Got it
+            </NeonButton>
+          </GlassCard>
+        </div>
+      )}
+
+      {!local2p && matchHelpOpen && (
+        <div
+          className="pointer-events-auto absolute bottom-28 right-4 z-[22] w-[min(22rem,calc(100vw-2rem))]"
+          role="dialog"
+          aria-label="How to play">
+          <GlassCard
+            variant="sticker"
+            className="space-y-3 border-neon-cyan/40 p-4 shadow-[0_0_24px_rgba(0,240,255,0.12)]">
+            <div className="flex items-start justify-between gap-2">
+              <h2 className="font-display text-sm font-black text-neon-cyan tracking-wide">
+                Controls
+              </h2>
+              <button
+                type="button"
+                className="text-gray-400 hover:text-white"
+                onClick={() => setMatchHelpOpen(false)}
+                aria-label="Close">
+                <XIcon size={18} />
+              </button>
+            </div>
+            <ul className="list-disc space-y-1.5 pl-4 text-xs text-gray-200 marker:text-neon-cyan">
+              <li>Offline vs AI — not live PvP.</li>
+              <li>Drag from the active fighter to aim; release to fire.</li>
+              <li>Keys: arrows / WASD adjust aim; Space or Enter fires.</li>
+              <li>Win by bringing the rival to 0 HP.</li>
+            </ul>
+            <NeonButton
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                dismissMatchTips();
+              }}>
+              Don&apos;t show again
             </NeonButton>
           </GlassCard>
         </div>
@@ -871,16 +1053,103 @@ export function GameScreen({
                   scale: 1.5,
                   opacity: 0
                 }}
-                className={`rounded-full border px-5 py-2 bg-dark-card/70 font-display font-black text-xl md:text-2xl tracking-[0.2em] uppercase ${isPlayerTurn ? 'text-neon-cyan border-neon-cyan/45 drop-shadow-[0_2px_0_rgba(0,0,0,0.6)]' : 'text-neon-magenta border-neon-magenta/45 drop-shadow-[0_2px_0_rgba(0,0,0,0.6)]'}`}>
-                {local2p
-                  ? isPlayerTurn
-                    ? 'Player 1 turn'
-                    : 'Player 2 turn'
-                  : isPlayerTurn
-                    ? 'Your turn'
-                    : 'Enemy turn'}
+                className="flex justify-center">
+                <motion.div
+                  variants={{
+                    hidden: {},
+                    visible: {
+                      transition: {
+                        staggerChildren: 0.04,
+                        delayChildren: 0.06
+                      }
+                    }
+                  }}
+                  initial="hidden"
+                  animate="visible"
+                  className={`flex flex-wrap justify-center gap-y-1 rounded-full border px-4 py-2 md:px-5 bg-dark-card/70 font-display font-black text-lg md:text-2xl tracking-[0.18em] uppercase ${isPlayerTurn ? 'text-neon-cyan border-neon-cyan/45 drop-shadow-[0_2px_0_rgba(0,0,0,0.6)]' : 'text-neon-magenta border-neon-magenta/45 drop-shadow-[0_2px_0_rgba(0,0,0,0.6)]'}`}>
+                  {(local2p
+                    ? isPlayerTurn
+                      ? 'PLAYER 1 TURN'
+                      : 'PLAYER 2 TURN'
+                    : isPlayerTurn
+                      ? 'YOUR TURN'
+                      : 'ENEMY TURN'
+                  )
+                    .split('')
+                    .map((ch, i) => (
+                      <motion.span
+                        key={`${isPlayerTurn ? 'p' : 'e'}-${i}-${ch}`}
+                        variants={{
+                          hidden: { y: 10, opacity: 0 },
+                          visible: {
+                            y: 0,
+                            opacity: 1,
+                            transition: { ease: 'easeOut' }
+                          }
+                        }}
+                        className="inline-block">
+                        {ch === ' ' ? '\u00A0' : ch}
+                      </motion.span>
+                    ))}
+                </motion.div>
               </motion.div>
             </AnimatePresence>
+
+            {canAim && (isAiming || aimPower > 4) ? (
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="pointer-events-none w-[min(14rem,72vw)]">
+                <GlassCard
+                  variant="sticker"
+                  className={`border px-3 py-2 ${
+                    isPlayerTurn
+                      ? 'border-neon-cyan/40 shadow-[0_0_16px_rgba(0,240,255,0.12)]'
+                      : 'border-neon-magenta/40 shadow-[0_0_16px_rgba(255,0,229,0.12)]'
+                  }`}>
+                  <div className="mb-1 flex justify-between font-display text-[10px] tracking-wide text-gray-300">
+                    <span>POWER</span>
+                    <span>{Math.round(aimPower)}%</span>
+                  </div>
+                  <motion.div
+                    animate={
+                      reduceMotion
+                        ? {}
+                        : aimPower > 85
+                          ? {
+                              scale: [1, 1.04, 1],
+                              boxShadow: [
+                                '0 0 0 rgba(0,240,255,0)',
+                                isPlayerTurn
+                                  ? '0 0 18px rgba(0,240,255,0.45)'
+                                  : '0 0 18px rgba(255,0,229,0.45)',
+                                '0 0 0 rgba(0,240,255,0)'
+                              ]
+                            }
+                          : { scale: 1 }
+                    }
+                    transition={
+                      reduceMotion
+                        ? { duration: 0 }
+                        : { duration: 1.2, repeat: Infinity, ease: 'easeInOut' }
+                    }>
+                    <ProgressBar
+                      progress={aimPower}
+                      color={
+                        aimPower > 80
+                          ? 'bg-neon-magenta'
+                          : isPlayerTurn
+                            ? 'bg-neon-cyan'
+                            : 'bg-neon-magenta'
+                      }
+                      height="h-2.5"
+                      variant="arcade"
+                      reduceMotion={reduceMotion}
+                    />
+                  </motion.div>
+                </GlassCard>
+              </motion.div>
+            ) : null}
 
             <GlassCard variant="sticker" className="px-4 py-2 flex items-center gap-3 rounded-full border-cyan-500/45 bg-dark-darker/90 pointer-events-none shadow-[0_0_14px_rgba(0,240,255,0.14)]">
               <WindIcon size={18} className="text-neon-cyan shrink-0" />
@@ -932,10 +1201,10 @@ export function GameScreen({
           <div className="w-12 shrink-0 pointer-events-none" aria-hidden />
 
           <AnimatePresence>
-            {canAim && (
+            {canAim && !local2p && (
               <motion.div
                 initial={{
-                  y: 100,
+                  y: 80,
                   opacity: 0
                 }}
                 animate={{
@@ -943,11 +1212,10 @@ export function GameScreen({
                   opacity: 1
                 }}
                 exit={{
-                  y: 100,
+                  y: 80,
                   opacity: 0
                 }}
-                className="flex flex-col items-center gap-4 pointer-events-auto w-full max-w-2xl mx-auto px-4">
-                {!local2p && (
+                className="pointer-events-auto mx-auto flex w-full max-w-2xl flex-col items-center gap-2 px-4">
                 <div className="w-full space-y-1">
                   <SectionHeading
                     colorClassName="text-gray-500"
@@ -956,11 +1224,11 @@ export function GameScreen({
                   </SectionHeading>
                   <div className="relative w-full">
                     <div
-                      className="pointer-events-none absolute left-0 top-0 bottom-0 z-10 w-10 bg-gradient-to-r from-[#0f0622] to-transparent"
+                      className="pointer-events-none absolute bottom-0 left-0 top-0 z-10 w-10 bg-gradient-to-r from-[#0f0622] to-transparent"
                       aria-hidden
                     />
                     <div
-                      className="pointer-events-none absolute right-0 top-0 bottom-0 z-10 w-10 bg-gradient-to-l from-[#0f0622] to-transparent"
+                      className="pointer-events-none absolute bottom-0 right-0 top-0 z-10 w-10 bg-gradient-to-l from-[#0f0622] to-transparent"
                       aria-hidden
                     />
                     <div className="relative z-0 flex snap-x snap-mandatory flex-nowrap gap-1.5 overflow-x-auto overflow-y-visible scroll-smooth px-2 py-1 pb-1 [-webkit-overflow-scrolling:touch]">
@@ -991,7 +1259,7 @@ export function GameScreen({
                         return (
                           <div
                             key={w.id}
-                            className="snap-start shrink-0 max-w-[9.5rem]">
+                            className="max-w-[9.5rem] shrink-0 snap-start">
                             {selected && !reduceMotion ? (
                               <motion.div
                                 className="rounded-3xl"
@@ -1016,154 +1284,6 @@ export function GameScreen({
                         );
                       })}
                     </div>
-                  </div>
-                </div>
-                )}
-
-                <div className="w-full space-y-1">
-                  <SectionHeading
-                    colorClassName="text-gray-500"
-                    className="text-center">
-                    AIM
-                  </SectionHeading>
-                  <div
-                  ref={aimAreaRef}
-                  style={aimAreaStyle}
-                  className="relative h-48 w-full cursor-crosshair touch-none overflow-hidden rounded-2xl border-[3px] border-dashed border-neon-cyan/45 bg-black/45 backdrop-blur-md"
-                  onPointerDown={handlePointerDown}
-                  onPointerMove={handlePointerMove}
-                  onPointerUp={endAim}
-                  onPointerCancel={endAim}
-                  onPointerLeave={endAim}>
-                  <div
-                    className={`pointer-events-none absolute inset-0 rounded-2xl ${aimDecorTransition} ${
-                      aimDecorLit ? 'opacity-100' : 'opacity-[0.38]'
-                    }`}>
-                    <div
-                      className="pointer-events-none absolute inset-0 opacity-[0.07]"
-                      style={{
-                        backgroundImage: `
-                        linear-gradient(rgba(0,240,255,0.5) 1px, transparent 1px),
-                        linear-gradient(90deg, rgba(0,240,255,0.5) 1px, transparent 1px)
-                      `,
-                        backgroundSize: '14px 14px'
-                      }}
-                      aria-hidden
-                    />
-                    <div
-                      className="pointer-events-none absolute inset-0 rounded-2xl bg-[radial-gradient(ellipse_at_center,transparent_42%,rgba(0,0,0,0.55)_100%)]"
-                      aria-hidden
-                    />
-                    <div
-                      className="pointer-events-none absolute left-3 top-3 h-5 w-5 border-l-2 border-t-2 border-neon-cyan/55"
-                      aria-hidden
-                    />
-                    <div
-                      className="pointer-events-none absolute right-3 top-3 h-5 w-5 border-r-2 border-t-2 border-neon-cyan/55"
-                      aria-hidden
-                    />
-                    <div
-                      className="pointer-events-none absolute bottom-3 left-3 h-5 w-5 border-b-2 border-l-2 border-neon-magenta/45"
-                      aria-hidden
-                    />
-                    <div
-                      className="pointer-events-none absolute bottom-3 right-3 h-5 w-5 border-b-2 border-r-2 border-neon-magenta/45"
-                      aria-hidden
-                    />
-                  </div>
-                  {aimChargeBlend ? (
-                    <div
-                      className="pointer-events-none absolute inset-0 rounded-2xl"
-                      style={{
-                        background: `radial-gradient(ellipse 85% 75% at 50% 88%, rgba(${aimChargeBlend.r},${aimChargeBlend.g},${aimChargeBlend.b},0.38), transparent 70%)`
-                      }}
-                      aria-hidden
-                    />
-                  ) : null}
-                  <div className="pointer-events-none relative z-10 flex h-full flex-col items-center justify-center gap-1 px-2 text-center font-display text-xs tracking-wide text-white/60 sm:text-sm">
-                    <span>DRAG TO AIM · TAP OUTSIDE TO ADJUST</span>
-                    <span className="max-w-[22rem] text-[10px] text-gray-200 sm:text-xs">
-                      <span className="md:hidden">
-                        <span className="block">
-                          Keys: ↑↓ / W S power · ←→ / A D angle
-                        </span>
-                        <span className="block">Space / Enter fire</span>
-                      </span>
-                      <span className="hidden md:inline">
-                        Keys: ↑↓ / W S power · ←→ / A D angle · Space / Enter fire
-                      </span>
-                    </span>
-                  </div>
-                  {previewPoints.length > 1 && (
-                    <svg
-                      className="pointer-events-none absolute inset-0 z-[5] h-full w-full"
-                      viewBox="0 0 100 100"
-                      preserveAspectRatio="none">
-                      <polyline
-                        points={polylinePoints}
-                        fill="none"
-                        stroke={previewStroke}
-                        strokeOpacity={0.9}
-                        strokeWidth="0.35"
-                        strokeDasharray="1 1"
-                      />
-                    </svg>
-                  )}
-                </div>
-                </div>
-
-                <div className="flex items-center gap-4 w-full border-4 border-neon-cyan/30 bg-dark-card/95 p-3 rounded-3xl shadow-[0_8px_0_0_rgba(0,0,0,0.35),0_0_20px_rgba(0,240,255,0.12)]">
-                  <div className="flex-1">
-                    <div className="text-[10px] font-display text-gray-300 mb-1 flex justify-between tracking-wide">
-                      <span>POWER</span>
-                      <span>{Math.round(aimPower)}%</span>
-                    </div>
-                    <ProgressBar
-                      progress={aimPower}
-                      color={
-                        aimPower > 80 ? 'bg-neon-magenta' : 'bg-neon-cyan'
-                      }
-                      height="h-4"
-                      variant="arcade"
-                      reduceMotion={reduceMotion}
-                    />
-                  </div>
-
-                  <div className="group relative z-0 inline-flex">
-                    {aimPower > 5 && !reduceMotion ? (
-                      <motion.div
-                        className="pointer-events-none absolute -inset-2 -z-10 rounded-full bg-neon-cyan/30 blur-md group-hover:bg-neon-cyan/45 group-hover:blur-lg group-focus-within:bg-neon-cyan/45"
-                        animate={{
-                          opacity: [0.32, 0.78, 0.32],
-                          scale: [1, 1.08, 1]
-                        }}
-                        transition={{
-                          duration: 2.6,
-                          repeat: Infinity,
-                          ease: 'easeInOut'
-                        }}
-                        aria-hidden
-                      />
-                    ) : null}
-                    {aimPower > 5 && reduceMotion ? (
-                      <div
-                        className="pointer-events-none absolute -inset-1 -z-10 rounded-full ring-2 ring-neon-cyan/35"
-                        aria-hidden
-                      />
-                    ) : null}
-                    <NeonButton
-                      type="button"
-                      size="md"
-                      variant="primary"
-                      className={`relative transition-shadow group-hover:shadow-[0_0_22px_rgba(0,240,255,0.55)] group-focus-visible:shadow-[0_0_22px_rgba(0,240,255,0.55)] ${
-                        aimPower <= 5
-                          ? 'opacity-50 saturate-50 !shadow-none'
-                          : ''
-                      }`}
-                      onClick={handleFire}
-                      disabled={aimPower <= 5}>
-                      FIRE
-                    </NeonButton>
                   </div>
                 </div>
               </motion.div>
@@ -1298,7 +1418,7 @@ export function GameScreen({
               variant="sticker"
               interactive
               className="min-h-[44px] min-w-[44px] p-3 rounded-full flex items-center justify-center"
-              onClick={() => setShowMatchTips(true)}
+              onClick={() => setMatchHelpOpen(true)}
               aria-label="How to play">
               <CircleHelpIcon className="text-neon-cyan" size={22} />
             </GlassCard>

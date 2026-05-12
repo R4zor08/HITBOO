@@ -1,4 +1,3 @@
-import React from 'react';
 import type { CharacterId } from '../../game/charactersCatalog';
 import { DEFAULT_PLAYER_CHARACTER_ID, DEFAULT_ENEMY_CHARACTER_ID } from '../../game/charactersCatalog';
 import { CHARACTER_SPRITE_BODIES } from '../../game/characterSprites/registry';

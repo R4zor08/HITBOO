@@ -11,8 +11,10 @@ import {
   findBestAim,
   initialVelocity,
   resolveHitZone,
+  sampleTrajectoryWithTerminal,
   simulateShotUntilEnd
 } from './artilleryPhysics';
+import { slingshotAimFromPointer } from './aimFromDrag';
 
 describe('initialVelocity', () => {
   it('faces right with positive horizontal component for shallow angles', () => {
@@ -150,6 +152,40 @@ describe('resolveHitZone / computeHitDamageWithZone', () => {
     expect(
       computeHitDamageWithZone(5, 10, tx, ty + 10, tx, ty)
     ).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('sampleTrajectoryWithTerminal', () => {
+  it('returns points and a terminal sample for a bounded arc', () => {
+    const { points, terminal } = sampleTrajectoryWithTerminal({
+      power: 55,
+      angleDeg: 38,
+      shooterFacingRight: true,
+      velocityScale: 1,
+      windSpeed: 0,
+      windDirection: 'right',
+      startX: P1_POS.x,
+      startY: P1_POS.y + PROJECTILE_START_Y_OFFSET
+    });
+    expect(points.length).toBeGreaterThan(2);
+    expect(terminal).toBeDefined();
+    expect(
+      terminal.y > GROUND_Y - 0.01 ||
+        terminal.x < OFFSCREEN_X_MIN + 0.01 ||
+        terminal.x > OFFSCREEN_X_MAX - 0.01
+    ).toBe(true);
+  });
+});
+
+describe('slingshotAimFromPointer', () => {
+  it('maps a forward-up pull to mid angle and power', () => {
+    const anchor = { x: 15, y: 70 };
+    const pointer = { x: 28, y: 58 };
+    const r = slingshotAimFromPointer(pointer, anchor, true, 1);
+    expect(r.aimAngle).toBeGreaterThan(20);
+    expect(r.aimAngle).toBeLessThan(80);
+    expect(r.aimPower).toBeGreaterThan(15);
+    expect(r.aimPower).toBeLessThanOrEqual(100);
   });
 });
 
