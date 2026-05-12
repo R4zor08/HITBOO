@@ -6,8 +6,10 @@ import { NeonButton } from '../components/ui/NeonButton';
 import { SectionHeading } from '../components/ui/SectionHeading';
 import { ScreenFrame } from '../components/ui/ScreenFrame';
 import { useHitBowProgress } from '../context/HitBowProgressContext';
+import { MAPS, DEFAULT_MAP_ID } from '../game/maps';
+import type { MapId } from '../types';
 interface MatchmakingScreenProps {
-  onMatchFound: () => void;
+  onMatchFound: (mapId: MapId) => void;
   onCancel: () => void;
 }
 export function MatchmakingScreen({
@@ -20,6 +22,7 @@ export function MatchmakingScreen({
     'searching' | 'found' | 'cancelled' | 'error'
   >('searching');
   const [attempt, setAttempt] = useState(1);
+  const [selectedMapId, setSelectedMapId] = useState<MapId>(DEFAULT_MAP_ID);
   const enemyName = 'SKULL RAIDER';
   const enemyRank = 14;
 
@@ -33,7 +36,7 @@ export function MatchmakingScreen({
       setStatus(shouldFail ? 'error' : 'found');
       if (!shouldFail) {
         matchFoundTimer = window.setTimeout(() => {
-          if (!done) onMatchFound();
+          if (!done) onMatchFound(selectedMapId);
         }, 1500);
       }
     }, 2200);
@@ -44,7 +47,7 @@ export function MatchmakingScreen({
         window.clearTimeout(matchFoundTimer);
       }
     };
-  }, [onMatchFound, attempt]);
+  }, [onMatchFound, attempt, selectedMapId]);
   return (
     <motion.div
       className="relative min-h-dvh h-dvh w-full overflow-hidden"
@@ -134,6 +137,39 @@ export function MatchmakingScreen({
             className="mt-1">
             You vs a local bot, not real PvP
           </SectionHeading>
+          <div className="mt-5 w-full max-w-3xl px-4">
+            <p className="mb-2 text-center text-xs font-display uppercase tracking-wider text-gray-400">
+              Select map
+            </p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {MAPS.map((map) => {
+                const selected = selectedMapId === map.id;
+                return (
+                  <button
+                    key={map.id}
+                    type="button"
+                    className={`min-h-[44px] rounded-xl border-2 px-2 py-2 text-left transition ${
+                      selected
+                        ? 'border-neon-cyan bg-neon-cyan/15 ring-2 ring-neon-cyan/30'
+                        : 'border-white/20 bg-dark-card/70 hover:border-neon-cyan/55'
+                    }`}
+                    aria-label={`Select ${map.name}`}
+                    onClick={() => setSelectedMapId(map.id)}>
+                    <div
+                      className="mb-1 h-12 w-full rounded-md border border-white/20 bg-cover bg-center"
+                      style={{ backgroundImage: `url(${map.previewSrc})` }}
+                    />
+                    <p className="font-display text-[11px] font-bold text-white">
+                      {map.name}
+                    </p>
+                    <p className="font-display text-[10px] text-gray-300">
+                      {map.theme}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <NeonButton
             variant="danger"
             size="sm"

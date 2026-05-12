@@ -63,4 +63,39 @@ export interface Local2pLoadout {
   p1WeaponId: string;
   p2CharacterId: CharacterId;
   p2WeaponId: string;
+  mapId: MapId;
+}
+
+export type MapId =
+  | 'sunset_canyon'
+  | 'raider_outpost'
+  | 'forest_camp'
+  | 'ruined_plains'
+  | 'desert_waste';
+
+export interface MapDefinition {
+  id: MapId;
+  name: string;
+  theme: string;
+  biome: string;
+  /** Web-served image for card previews. */
+  previewSrc: string;
+  /** Web-served image used by battlefield backdrop. */
+  backgroundSrc: string;
+  overlayTint?: string;
+  windBias?: number;
+}
+
+export interface TurnTimerConfig {
+  durationSec: number;
+}
+
+export type PlayerStance = 'standing' | 'jumping' | 'crouching' | 'prone';
+
+export interface PlayerMovementState {
+  x: number;
+  yOffset: number;
+  vy: number;
+  grounded: boolean;
+  stance: PlayerStance;
 }

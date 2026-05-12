@@ -7,7 +7,6 @@ import { CharacterSticker } from './CharacterSticker';
 import type { WindDirection } from '../../game/artilleryPhysics';
 import {
   GROUND_Y,
-  HIT_RADIUS,
   OFFSCREEN_X_MAX,
   OFFSCREEN_X_MIN,
   P1_POS,
@@ -15,10 +14,13 @@ import {
   PROJECTILE_START_Y_OFFSET,
   computeHitDamage,
   computeHitDamageWithZone,
+  hitRadiusForStance,
   initialVelocity,
   simulateStep,
   windAccelPerFrame
 } from '../../game/artilleryPhysics';
+import type { MapId, PlayerStance } from '../../types';
+import { getMapById } from '../../game/maps';
 
 export type ShotResult =
   | {
@@ -60,6 +62,11 @@ interface BattlefieldProps {
   playerStickerAim?: { isCharging: boolean; aimPullDeg: number } | null;
   /** Slingshot aim visual for P2 sticker. */
   enemyStickerAim?: { isCharging: boolean; aimPullDeg: number } | null;
+  mapId: MapId;
+  playerPos: { x: number; y: number };
+  enemyPos: { x: number; y: number };
+  playerStance: PlayerStance;
+  enemyStance: PlayerStance;
 }
 
 export function Battlefield({
@@ -77,7 +84,12 @@ export function Battlefield({
   onReady,
   bodyPartDamage = false,
   playerStickerAim = null,
-  enemyStickerAim = null
+  enemyStickerAim = null,
+  mapId,
+  playerPos,
+  enemyPos,
+  playerStance,
+  enemyStance
 }: BattlefieldProps) {
   const [projectile, setProjectile] = useState<{
     x: number;
@@ -114,8 +126,9 @@ export function Battlefield({
   const shotPowerRef = useRef(0);
   const shotDamageBaseRef = useRef(0);
 
-  const p1Pos = P1_POS;
-  const p2Pos = P2_POS;
+  const p1Pos = playerPos ?? P1_POS;
+  const p2Pos = enemyPos ?? P2_POS;
+  const map = getMapById(mapId);
   const onResultRef = useRef(onShotResult);
   onResultRef.current = onShotResult;
 
@@ -202,8 +215,9 @@ export function Battlefield({
         return;
       }
 
+      const targetStance = shotByPlayer ? enemyStance : playerStance;
       const hitDistance = Math.hypot(x - targetX, y - targetY);
-      if (hitDistance < HIT_RADIUS) {
+      if (hitDistance < hitRadiusForStance(targetStance)) {
         physicsState.current.active = false;
         setProjectile(null);
         if (requestRef.current) cancelAnimationFrame(requestRef.current);
@@ -258,7 +272,7 @@ export function Battlefield({
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- snapshot when `triggerFire` updates
-  }, [triggerFire, isPlayerTurn, bodyPartDamage]);
+  }, [triggerFire, isPlayerTurn, bodyPartDamage, playerStance, enemyStance]);
 
   useEffect(() => {
     return () => {
@@ -275,7 +289,8 @@ export function Battlefield({
   return (
     <motion.div
       ref={containerRef}
-      className="absolute inset-0 overflow-hidden bg-gradient-to-b from-[#1a0a2e] via-[#2d1b4e] to-[#0f0620]"
+      className="absolute inset-0 overflow-hidden"
+      style={{ backgroundColor: '#0f0620' }}
       animate={
         cameraShake
           ? {
@@ -285,6 +300,16 @@ export function Battlefield({
           : {}
       }
       transition={{ duration: 0.4 }}>
+      <div
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: `url(${map.backgroundSrc})` }}
+        aria-hidden
+      />
+      <div
+        className="absolute inset-0"
+        style={{ background: map.overlayTint ?? 'transparent' }}
+        aria-hidden
+      />
       <div
         className="absolute inset-0 opacity-[0.12] bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"
         aria-hidden
@@ -354,6 +379,7 @@ export function Battlefield({
         reduceMotion={reduceMotion}
         aimPullDeg={playerStickerAim?.aimPullDeg}
         isCharging={playerStickerAim?.isCharging}
+        stance={playerStance}
       />
 
       <CharacterSticker
@@ -368,6 +394,7 @@ export function Battlefield({
         reduceMotion={reduceMotion}
         aimPullDeg={enemyStickerAim?.aimPullDeg}
         isCharging={enemyStickerAim?.isCharging}
+        stance={enemyStance}
       />
 
       {viz && projectile?.active && (

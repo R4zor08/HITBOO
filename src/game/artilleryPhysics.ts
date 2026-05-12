@@ -6,12 +6,12 @@ export const WIND_SPEED_TO_ACCEL = 0.0045;
 export const POWER_TO_VELOCITY = 0.3;
 export const HIT_RADIUS = 5;
 export const GROUND_Y = 90;
-export const OFFSCREEN_X_MIN = -10;
-export const OFFSCREEN_X_MAX = 110;
+export const OFFSCREEN_X_MIN = -20;
+export const OFFSCREEN_X_MAX = 120;
 export const MAX_SIM_STEPS = 2500;
 
-export const P1_POS = { x: 15, y: 70 };
-export const P2_POS = { x: 85, y: 70 };
+export const P1_POS = { x: 20, y: 70 };
+export const P2_POS = { x: 80, y: 70 };
 export const PROJECTILE_START_Y_OFFSET = -5;
 
 export type WindDirection = 'left' | 'right';
@@ -183,6 +183,20 @@ export function computeHitDamage(
 
 /** Sticker hit regions vs foot anchor (percent coords; Y increases downward). */
 export type HitBodyZone = 'head' | 'torso' | 'legs';
+export type HitboxStance = 'standing' | 'jumping' | 'crouching' | 'prone';
+
+export function hitRadiusForStance(stance: HitboxStance): number {
+  switch (stance) {
+    case 'prone':
+      return HIT_RADIUS * 0.65;
+    case 'crouching':
+      return HIT_RADIUS * 0.78;
+    case 'jumping':
+      return HIT_RADIUS * 0.9;
+    default:
+      return HIT_RADIUS;
+  }
+}
 
 /**
  * Classify impact relative to defender anchor. Positive dy means impact above

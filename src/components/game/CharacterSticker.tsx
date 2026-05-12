@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import type { CharacterId } from '../../game/charactersCatalog';
 import { DEFAULT_PLAYER_CHARACTER_ID, DEFAULT_ENEMY_CHARACTER_ID } from '../../game/charactersCatalog';
 import { CHARACTER_SPRITE_BODIES } from '../../game/characterSprites/registry';
+import type { PlayerStance } from '../../types';
 
 const SPRITE_STROKE = '#140820';
 const ENEMY_GLOW_HEX = '#ff3355';
@@ -23,6 +24,7 @@ type CharacterStickerProps = {
   aimPullDeg?: number;
   /** Stronger glow while building shot power. */
   isCharging?: boolean;
+  stance?: PlayerStance;
 };
 
 export function CharacterSticker({
@@ -36,7 +38,8 @@ export function CharacterSticker({
   facingRight,
   reduceMotion,
   aimPullDeg,
-  isCharging = false
+  isCharging = false,
+  stance = 'standing'
 }: CharacterStickerProps) {
   const isDead = hp <= 0;
 
@@ -64,12 +67,17 @@ export function CharacterSticker({
       ? Math.max(-16, Math.min(16, aimPullDeg * 0.11 * (facingRight ? -1 : 1)))
       : 0;
 
+  const stanceScale =
+    stance === 'prone' ? 0.7 : stance === 'crouching' ? 0.82 : 1;
+  const stanceYOffset =
+    stance === 'jumping' ? -6 : stance === 'prone' ? 2.8 : stance === 'crouching' ? 1.6 : 0;
+
   return (
     <motion.div
       className="absolute w-[5.25rem] h-[8rem] flex flex-col items-center justify-end pointer-events-none"
       style={{
         left: `${x}%`,
-        top: `${y}%`,
+        top: `${y + stanceYOffset}%`,
         transform: `translate(-50%, -100%) ${facingRight ? '' : 'scaleX(-1)'}`,
         filter: glowFilter
       }}
@@ -98,7 +106,7 @@ export function CharacterSticker({
 
       <motion.div
         className="flex h-full w-full flex-col items-center justify-end"
-        style={{ transformOrigin: '50% 100%' }}
+        style={{ transformOrigin: '50% 100%', scale: stanceScale }}
         animate={{ rotate: leanDeg }}
         transition={{ type: 'spring', stiffness: 260, damping: 22 }}>
         <svg viewBox="0 0 100 168" className="h-full w-full overflow-visible">

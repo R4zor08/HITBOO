@@ -17,6 +17,8 @@ import {
 import { PLAYABLE_WEAPON_PRESETS } from '../game/weaponsCatalog';
 import { DEFAULT_WEAPON_ID } from '../game/weaponsCatalog';
 import { WEAPON_PRESETS } from '../game/weapons';
+import { DEFAULT_MAP_ID, MAPS } from '../game/maps';
+import type { MapId } from '../types';
 
 interface Local2pPrematchFlowProps {
   onComplete: (loadout: Local2pLoadout) => void;
@@ -42,6 +44,7 @@ export function Local2pPrematchFlow({
     DEFAULT_ENEMY_CHARACTER_ID
   );
   const [p2WeaponId, setP2WeaponId] = useState(DEFAULT_WEAPON_ID);
+  const [mapId, setMapId] = useState<MapId>(DEFAULT_MAP_ID);
 
   const p1Weapon =
     WEAPON_PRESETS.find((w) => w.id === p1WeaponId) ?? WEAPON_PRESETS[0];
@@ -159,6 +162,39 @@ export function Local2pPrematchFlow({
                   </span>
                 </GlassCard>
               </div>
+              <div>
+                <p className="mb-2 text-center font-display text-xs uppercase tracking-wider text-gray-400">
+                  Select map
+                </p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {MAPS.map((m) => {
+                    const selected = mapId === m.id;
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setMapId(m.id)}
+                        className={`min-h-[44px] rounded-xl border-2 px-2 py-2 text-left transition ${
+                          selected
+                            ? 'border-neon-lime bg-neon-lime/15 ring-2 ring-neon-lime/35'
+                            : 'border-white/20 bg-dark-darker hover:border-neon-lime/60'
+                        }`}
+                        aria-label={`Map ${m.name}`}>
+                        <div
+                          className="mb-1 h-12 w-full rounded-md border border-white/20 bg-cover bg-center"
+                          style={{ backgroundImage: `url(${m.previewSrc})` }}
+                        />
+                        <p className="font-display text-[11px] font-bold text-white">
+                          {m.name}
+                        </p>
+                        <p className="font-display text-[10px] text-gray-300">
+                          {m.theme}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <NeonButton variant="secondary" onClick={() => setStep('p2')}>
                   Back
@@ -171,7 +207,8 @@ export function Local2pPrematchFlow({
                       p1CharacterId,
                       p1WeaponId,
                       p2CharacterId,
-                      p2WeaponId
+                      p2WeaponId,
+                      mapId
                     })
                   }>
                   Start match
