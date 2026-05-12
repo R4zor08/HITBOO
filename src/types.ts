@@ -1,7 +1,10 @@
+import type { CharacterId } from './game/charactersCatalog';
+
 export type ScreenState =
   | 'loading'
   | 'menu'
   | 'matchmaking'
+  | 'local2p_setup'
   | 'game'
   | 'victory';
 
@@ -52,4 +55,12 @@ export interface Weapon {
   /** Multiplier on launch speed (higher = flatter / faster). */
   velocityScale: number;
   projectileStyle: ProjectileStyle;
+}
+
+/** Session-only loadout for Local 2 players (hot-seat); not persisted. */
+export interface Local2pLoadout {
+  p1CharacterId: CharacterId;
+  p1WeaponId: string;
+  p2CharacterId: CharacterId;
+  p2WeaponId: string;
 }

@@ -373,6 +373,16 @@ export function HitBowProgressProvider({
 
   const applyMatchRewards = useCallback(
     (result: MatchResult): MatchRewardResult => {
+      if (result.mode === 'local2p') {
+        const r = rankFromXp(playerXp);
+        return {
+          coinsAwarded: 0,
+          xpAwarded: 0,
+          newRank: r,
+          newPlayerXp: playerXp,
+          previousPlayerXp: playerXp
+        };
+      }
       const win = result.winner === 'player';
       const accuracyBonus = Math.round(result.player.accuracy * 0.5);
       const coinsAwarded =

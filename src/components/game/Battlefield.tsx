@@ -14,6 +14,7 @@ import {
   P2_POS,
   PROJECTILE_START_Y_OFFSET,
   computeHitDamage,
+  computeHitDamageWithZone,
   initialVelocity,
   simulateStep,
   windAccelPerFrame
@@ -25,8 +26,10 @@ export type ShotResult =
       damage: number;
       impactX: number;
       impactY: number;
+      /** Who fired this shot (snapshot when the volley started). */
+      shooterWasPlayer: boolean;
     }
-  | { outcome: 'miss' };
+  | { outcome: 'miss'; shooterWasPlayer: boolean };
 
 export interface FirePayload {
   power: number;
@@ -51,6 +54,8 @@ interface BattlefieldProps {
   playerCharacterId?: CharacterId | null;
   enemyCharacterId?: CharacterId | null;
   onReady?: () => void;
+  /** Local 2P: scale damage by impact region vs defender anchor. */
+  bodyPartDamage?: boolean;
 }
 
 export function Battlefield({
@@ -65,7 +70,8 @@ export function Battlefield({
   playerAccentHex = '#00f0ff',
   playerCharacterId = null,
   enemyCharacterId = null,
-  onReady
+  onReady,
+  bodyPartDamage = false
 }: BattlefieldProps) {
   const [projectile, setProjectile] = useState<{
     x: number;
@@ -115,6 +121,7 @@ export function Battlefield({
     if (physicsState.current.active) return;
 
     let cancelled = false;
+    const shotByPlayer = isPlayerTurn;
     const power = triggerFire.power;
     const angle = triggerFire.angle;
     const velocityScale = triggerFire.velocityScale;
@@ -149,7 +156,7 @@ export function Battlefield({
     });
 
     const targetX = isPlayerTurn ? p2Pos.x : p1Pos.x;
-    const targetY = p2Pos.y;
+    const targetY = isPlayerTurn ? p2Pos.y : p1Pos.y;
 
     const animateProjectile = () => {
       if (cancelled || !physicsState.current.active) return;
@@ -178,7 +185,12 @@ export function Battlefield({
         setProjectile(null);
         if (requestRef.current) cancelAnimationFrame(requestRef.current);
         setTimeout(() => {
-          if (!cancelled) onResultRef.current({ outcome: 'miss' });
+          if (!cancelled) {
+            onResultRef.current({
+              outcome: 'miss',
+              shooterWasPlayer: shotByPlayer
+            });
+          }
         }, 500);
         return;
       }
@@ -188,10 +200,19 @@ export function Battlefield({
         physicsState.current.active = false;
         setProjectile(null);
         if (requestRef.current) cancelAnimationFrame(requestRef.current);
-        const damage = computeHitDamage(
-          shotDamageBaseRef.current,
-          shotPowerRef.current
-        );
+        const damage = bodyPartDamage
+          ? computeHitDamageWithZone(
+              shotDamageBaseRef.current,
+              shotPowerRef.current,
+              x,
+              y,
+              targetX,
+              targetY
+            )
+          : computeHitDamage(
+              shotDamageBaseRef.current,
+              shotPowerRef.current
+            );
         setHitEffect({
           x: targetX,
           y: targetY,
@@ -207,7 +228,8 @@ export function Battlefield({
               outcome: 'hit',
               damage,
               impactX: x,
-              impactY: y
+              impactY: y,
+              shooterWasPlayer: shotByPlayer
             });
           }
         }, 1000);
@@ -225,7 +247,7 @@ export function Battlefield({
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- snapshot when `triggerFire` updates
-  }, [triggerFire, isPlayerTurn]);
+  }, [triggerFire, isPlayerTurn, bodyPartDamage]);
 
   useEffect(() => {
     return () => {

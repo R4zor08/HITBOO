@@ -3,8 +3,9 @@ import { AnimatePresence } from 'framer-motion';
 import { HitBowProgressProvider } from './context/HitBowProgressContext';
 import type { MatchResult } from './game/matchResult';
 import { appendMatchHistory } from './game/matchHistory';
-import { ScreenState } from './types';
+import type { Local2pLoadout, ScreenState } from './types';
 import { LoadingScreen } from './pages/LoadingScreen';
+import { Local2pPrematchFlow } from './pages/Local2pPrematchFlow';
 import { MainMenu } from './pages/MainMenu';
 import { MatchmakingScreen } from './pages/MatchmakingScreen';
 import { GameScreen, type GameMode } from './pages/GameScreen';
@@ -16,9 +17,18 @@ export function App() {
   const [lastMatchResult, setLastMatchResult] = useState<MatchResult | null>(null);
   const [gameMode, setGameMode] = useState<GameMode>('standard');
   const [gameSessionId, setGameSessionId] = useState(0);
+  const [local2pLoadout, setLocal2pLoadout] = useState<Local2pLoadout | null>(
+    null
+  );
+
+  const clearLocal2pSession = () => {
+    setLocal2pLoadout(null);
+  };
 
   const handleGameOver = (result: MatchResult) => {
-    appendMatchHistory(result);
+    if (result.mode !== 'local2p') {
+      appendMatchHistory(result);
+    }
     setLastWinner(result.winner);
     setLastMatchResult(result);
     setCurrentScreen('victory');
@@ -42,12 +52,28 @@ export function App() {
   };
 
   const handlePlayAgain = () => {
-    if (gameMode === 'practice') {
+    if (gameMode === 'practice' || gameMode === 'local2p') {
       setGameSessionId((id) => id + 1);
       setCurrentScreen('game');
     } else {
       setCurrentScreen('matchmaking');
     }
+  };
+
+  const goLocal2pSetup = () => {
+    setCurrentScreen('local2p_setup');
+  };
+
+  const startLocal2pFromWizard = (loadout: Local2pLoadout) => {
+    setLocal2pLoadout(loadout);
+    setGameMode('local2p');
+    setGameSessionId((id) => id + 1);
+    setCurrentScreen('game');
+  };
+
+  const exitToMenu = () => {
+    clearLocal2pSession();
+    setCurrentScreen('menu');
   };
 
   return (
@@ -66,6 +92,7 @@ export function App() {
               key="menu"
               onPlay={goMatchmaking}
               onStartPractice={startPractice}
+              onStartLocal2p={goLocal2pSetup}
             />
           )}
 
@@ -77,12 +104,23 @@ export function App() {
             />
           )}
 
+          {currentScreen === 'local2p_setup' && (
+            <Local2pPrematchFlow
+              key="local2p_setup"
+              onComplete={startLocal2pFromWizard}
+              onCancel={exitToMenu}
+            />
+          )}
+
           {currentScreen === 'game' && (
             <GameScreen
               key={`game-${gameSessionId}`}
               gameMode={gameMode}
+              local2pLoadout={
+                gameMode === 'local2p' ? local2pLoadout : undefined
+              }
               onGameOver={handleGameOver}
-              onExitMatch={() => setCurrentScreen('menu')}
+              onExitMatch={exitToMenu}
             />
           )}
 
@@ -91,7 +129,15 @@ export function App() {
               key="victory"
               winner={lastWinner}
               matchResult={lastMatchResult}
-              onMainMenu={() => setCurrentScreen('menu')}
+              local2pCharacterIds={
+                lastMatchResult?.mode === 'local2p' && local2pLoadout
+                  ? {
+                      p1: local2pLoadout.p1CharacterId,
+                      p2: local2pLoadout.p2CharacterId
+                    }
+                  : undefined
+              }
+              onMainMenu={exitToMenu}
               onPlayAgain={handlePlayAgain}
             />
           )}

@@ -7,8 +7,10 @@ import {
   P2_POS,
   PROJECTILE_START_Y_OFFSET,
   computeHitDamage,
+  computeHitDamageWithZone,
   findBestAim,
   initialVelocity,
+  resolveHitZone,
   simulateShotUntilEnd
 } from './artilleryPhysics';
 
@@ -109,6 +111,45 @@ describe('computeHitDamage', () => {
       expect(d).toBeGreaterThanOrEqual(prev);
       prev = d;
     }
+  });
+});
+
+describe('resolveHitZone / computeHitDamageWithZone', () => {
+  const tx = 85;
+  const ty = 70;
+
+  it('classifies high impacts as head', () => {
+    const r = resolveHitZone(tx, ty - 8, tx, ty);
+    expect(r.zone).toBe('head');
+    expect(r.multiplier).toBeGreaterThan(1);
+  });
+
+  it('classifies near-anchor as torso', () => {
+    const r = resolveHitZone(tx, ty - 1, tx, ty);
+    expect(r.zone).toBe('torso');
+    expect(r.multiplier).toBe(1);
+  });
+
+  it('classifies low impacts as legs', () => {
+    const r = resolveHitZone(tx, ty + 4, tx, ty);
+    expect(r.zone).toBe('legs');
+    expect(r.multiplier).toBeLessThan(1);
+  });
+
+  it('applies head >= torso >= legs for same base and power', () => {
+    const base = 22;
+    const p = 55;
+    const head = computeHitDamageWithZone(base, p, tx, ty - 6, tx, ty);
+    const torso = computeHitDamageWithZone(base, p, tx, ty, tx, ty);
+    const legs = computeHitDamageWithZone(base, p, tx, ty + 4, tx, ty);
+    expect(head).toBeGreaterThanOrEqual(torso);
+    expect(torso).toBeGreaterThanOrEqual(legs);
+  });
+
+  it('is always at least 1', () => {
+    expect(
+      computeHitDamageWithZone(5, 10, tx, ty + 10, tx, ty)
+    ).toBeGreaterThanOrEqual(1);
   });
 });
 

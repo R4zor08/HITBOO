@@ -8,7 +8,8 @@ import {
   SettingsIcon,
   MedalIcon,
   LayersIcon,
-  BarChart3
+  BarChart3,
+  UsersIcon
 } from 'lucide-react';
 import { useHitBowProgress } from '../context/HitBowProgressContext';
 import { NeonButton } from '../components/ui/NeonButton';
@@ -33,11 +34,12 @@ import { StickerAvatar } from '../components/game/StickerAvatar';
 interface MainMenuProps {
   onPlay: () => void;
   onStartPractice: () => void;
+  onStartLocal2p: () => void;
 }
 
 type ModalId = 'shop' | 'daily' | 'settings' | 'loadout' | 'stats' | null;
 
-export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
+export function MainMenu({ onPlay, onStartPractice, onStartLocal2p }: MainMenuProps) {
   const progress = useHitBowProgress();
   const reduceMotion = progress.settings.reduceMotion;
   const [modal, setModal] = useState<ModalId>(null);
@@ -659,6 +661,21 @@ export function MainMenu({ onPlay, onStartPractice }: MainMenuProps) {
                   : 'group-hover:animate-[shimmer_1.5s_infinite]'
               }`}
             />
+          </NeonButton>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.55 }}
+          className="mb-8">
+          <NeonButton
+            size="lg"
+            variant="secondary"
+            onClick={onStartLocal2p}
+            className="w-full max-w-md mx-auto flex items-center justify-center gap-2">
+            <UsersIcon size={24} />
+            Local 2 players
           </NeonButton>
         </motion.div>
 

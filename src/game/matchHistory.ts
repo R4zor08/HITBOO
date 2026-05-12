@@ -41,6 +41,7 @@ export function readMatchHistory(): MatchHistoryEntry[] {
 
 export function appendMatchHistory(result: MatchResult): void {
   if (typeof window === 'undefined') return;
+  if (result.mode === 'local2p') return;
   const entry: MatchHistoryEntry = {
     at: new Date().toISOString(),
     winner: result.winner,

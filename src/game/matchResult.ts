@@ -1,5 +1,5 @@
 export type MatchWinner = 'player' | 'enemy';
-export type MatchMode = 'standard' | 'practice';
+export type MatchMode = 'standard' | 'practice' | 'local2p';
 
 export interface MatchSideResult {
   name: string;

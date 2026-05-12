@@ -149,6 +149,59 @@ export function computeHitDamage(
   return Math.max(1, Math.round(baseDamage * factor));
 }
 
+/** Sticker hit regions vs foot anchor (percent coords; Y increases downward). */
+export type HitBodyZone = 'head' | 'torso' | 'legs';
+
+/**
+ * Classify impact relative to defender anchor. Positive dy means impact above
+ * anchor (smaller Y) — treated as head/upper body.
+ */
+export function resolveHitZone(
+  impactX: number,
+  impactY: number,
+  targetX: number,
+  targetY: number
+): { zone: HitBodyZone; multiplier: number } {
+  const dy = targetY - impactY;
+  const dx = Math.abs(impactX - targetX);
+
+  let zone: HitBodyZone;
+  if (dy > 3) {
+    zone = 'head';
+  } else if (dy < -2) {
+    zone = 'legs';
+  } else {
+    zone = 'torso';
+  }
+
+  let multiplier =
+    zone === 'head' ? 1.35 : zone === 'legs' ? 0.75 : 1.0;
+  if (dx > 3) {
+    multiplier *= 0.92;
+  }
+
+  return { zone, multiplier };
+}
+
+/** Base power-scaled damage times body-zone multiplier (Local 2P). */
+export function computeHitDamageWithZone(
+  baseDamage: number,
+  powerPct: number,
+  impactX: number,
+  impactY: number,
+  targetX: number,
+  targetY: number
+): number {
+  const base = computeHitDamage(baseDamage, powerPct);
+  const { multiplier } = resolveHitZone(
+    impactX,
+    impactY,
+    targetX,
+    targetY
+  );
+  return Math.max(1, Math.round(base * multiplier));
+}
+
 export interface AimSolution {
   power: number;
   angleDeg: number;

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   TrophyIcon,
@@ -14,11 +14,14 @@ import { ScreenFrame } from '../components/ui/ScreenFrame';
 import { SectionHeading } from '../components/ui/SectionHeading';
 import { StickerAvatar } from '../components/game/StickerAvatar';
 import { useHitBowProgress } from '../context/HitBowProgressContext';
+import type { CharacterId } from '../game/charactersCatalog';
 import type { MatchResult, MatchRewardResult } from '../game/matchResult';
 
 interface VictoryScreenProps {
   winner: 'player' | 'enemy';
   matchResult: MatchResult | null;
+  /** When set, victory avatars use session stickers instead of equipped roster. */
+  local2pCharacterIds?: { p1: CharacterId; p2: CharacterId };
   onMainMenu: () => void;
   onPlayAgain: () => void;
 }
@@ -33,11 +36,14 @@ function xpProgressPercent(xp: number): number {
 export function VictoryScreen({
   winner,
   matchResult,
+  local2pCharacterIds,
   onMainMenu,
   onPlayAgain
 }: VictoryScreenProps) {
   const progress = useHitBowProgress();
+  const isLocal2p = matchResult?.mode === 'local2p';
   const isWin = winner === 'player';
+  const playerWon = isLocal2p ? winner === 'player' : isWin;
   const [xpProgress, setXpProgress] = useState(xpProgressPercent(progress.playerXp));
   const [coins, setCoins] = useState(0);
   const [xpGain, setXpGain] = useState(0);
@@ -97,10 +103,20 @@ export function VictoryScreen({
     };
   }, [progress, safeResult]);
 
-  const titleColor = isWin
-    ? 'text-neon-cyan text-glow-cyan'
-    : 'text-neon-magenta text-glow-magenta';
-  const titleText = isWin ? 'VICTORY' : 'DEFEAT';
+  const titleColor = isLocal2p
+    ? winner === 'player'
+      ? 'text-neon-cyan text-glow-cyan'
+      : 'text-neon-magenta text-glow-magenta'
+    : isWin
+      ? 'text-neon-cyan text-glow-cyan'
+      : 'text-neon-magenta text-glow-magenta';
+  const titleText = isLocal2p
+    ? winner === 'player'
+      ? 'PLAYER 1 WINS'
+      : 'PLAYER 2 WINS'
+    : isWin
+      ? 'VICTORY'
+      : 'DEFEAT';
   return (
     <motion.div
       className="relative w-full h-screen overflow-hidden"
@@ -121,7 +137,7 @@ export function VictoryScreen({
         contentClassName="items-center justify-center">
         <div
           className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full blur-[100px] opacity-20 pointer-events-none ${
-            isWin ? 'bg-neon-cyan' : 'bg-neon-magenta'
+            playerWon ? 'bg-neon-cyan' : 'bg-neon-magenta'
           }`}
         />
 
@@ -145,7 +161,9 @@ export function VictoryScreen({
           className="text-center mb-12">
           <TrophyIcon
             size={64}
-            className={`mx-auto mb-4 ${isWin ? 'text-neon-yellow' : 'text-gray-600'}`}
+            className={`mx-auto mb-4 ${
+              isLocal2p ? 'text-neon-yellow' : isWin ? 'text-neon-yellow' : 'text-gray-600'
+            }`}
           />
           <SectionHeading
             colorClassName="text-gray-500"
@@ -180,7 +198,11 @@ export function VictoryScreen({
                 <div
                   className={`w-16 h-16 rounded-xl border-2 ${isWin ? 'border-neon-cyan shadow-neon-cyan' : 'border-gray-600'} overflow-hidden bg-dark-darker p-1`}>
                   <StickerAvatar
-                    characterId={progress.equippedCharacterId}
+                    characterId={
+                      isLocal2p && local2pCharacterIds
+                        ? local2pCharacterIds.p1
+                        : progress.equippedCharacterId
+                    }
                     side="player"
                     accentHex={progress.playerAccentHex}
                     className="h-full w-full"
@@ -202,7 +224,11 @@ export function VictoryScreen({
                 <div
                   className={`w-16 h-16 rounded-xl border-2 ${!isWin ? 'border-neon-magenta shadow-neon-magenta' : 'border-gray-600'} overflow-hidden bg-dark-darker p-1`}>
                   <StickerAvatar
-                    characterId={progress.equippedEnemyCharacterId}
+                    characterId={
+                      isLocal2p && local2pCharacterIds
+                        ? local2pCharacterIds.p2
+                        : progress.equippedEnemyCharacterId
+                    }
                     side="enemy"
                     accentHex="#ff00e5"
                     className="h-full w-full"
@@ -220,6 +246,7 @@ export function VictoryScreen({
             </div>
 
             <div className="space-y-6">
+              {!isLocal2p && (
               <div>
                 <div className="flex justify-between text-sm font-display mb-2">
                   <span className="text-neon-cyan flex items-center gap-2">
@@ -232,7 +259,9 @@ export function VictoryScreen({
                   Rank {victoryRank} ({Math.round(xpProgress)}%)
                 </div>
               </div>
+              )}
 
+              {!isLocal2p && (
               <div className="flex justify-center">
                 <div className="bg-dark-darker/50 rounded-xl px-6 py-3 flex items-center gap-3 border border-neon-yellow/30 shadow-[0_0_15px_rgba(255,234,0,0.1)]">
                   <CoinsIcon className="text-neon-yellow" />
@@ -241,6 +270,12 @@ export function VictoryScreen({
                   </span>
                 </div>
               </div>
+              )}
+              {isLocal2p && (
+                <p className="text-center text-sm text-gray-400 font-display">
+                  No rank or coin progress in Local 2 players.
+                </p>
+              )}
             </div>
           </GlassCard>
         </motion.div>
