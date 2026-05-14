@@ -69,6 +69,8 @@ export interface ShotParams {
   startY: number;
   targetX: number;
   targetY: number;
+  /** Miss when trajectory Y exceeds this (percent). Defaults to {@link GROUND_Y}. */
+  groundY?: number;
 }
 
 export type ShotSimResult =
@@ -76,6 +78,7 @@ export type ShotSimResult =
   | { outcome: 'miss'; reason: 'ground' | 'offscreen' };
 
 export function simulateShotUntilEnd(params: ShotParams): ShotSimResult {
+  const gy = params.groundY ?? GROUND_Y;
   const wind = windAccelPerFrame(params.windSpeed, params.windDirection);
   const v0 = initialVelocity(
     params.power,
@@ -92,10 +95,10 @@ export function simulateShotUntilEnd(params: ShotParams): ShotSimResult {
   for (let i = 0; i < MAX_SIM_STEPS; i++) {
     body = simulateStep(body, wind);
     const { x, y } = body;
-    if (y > GROUND_Y || x < OFFSCREEN_X_MIN || x > OFFSCREEN_X_MAX) {
+    if (y > gy || x < OFFSCREEN_X_MIN || x > OFFSCREEN_X_MAX) {
       return {
         outcome: 'miss',
-        reason: y > GROUND_Y ? 'ground' : 'offscreen'
+        reason: y > gy ? 'ground' : 'offscreen'
       };
     }
     const dist = Math.hypot(x - params.targetX, y - params.targetY);
@@ -117,6 +120,7 @@ export function sampleTrajectoryPoints(
   maxPoints = 80,
   sampleEvery = 3
 ): PointPct[] {
+  const gy = params.groundY ?? GROUND_Y;
   const wind = windAccelPerFrame(params.windSpeed, params.windDirection);
   const v0 = initialVelocity(
     params.power,
@@ -135,7 +139,7 @@ export function sampleTrajectoryPoints(
     body = simulateStep(body, wind);
     const { x, y } = body;
     if (i % sampleEvery === 0) pts.push({ x, y });
-    if (y > GROUND_Y || x < OFFSCREEN_X_MIN || x > OFFSCREEN_X_MAX) break;
+    if (y > gy || x < OFFSCREEN_X_MIN || x > OFFSCREEN_X_MAX) break;
     if (pts.length >= maxPoints) break;
   }
   return pts;
@@ -147,6 +151,7 @@ export function sampleTrajectoryWithTerminal(
   maxPoints = 100,
   sampleEvery = 2
 ): { points: PointPct[]; terminal: PointPct } {
+  const gy = params.groundY ?? GROUND_Y;
   const wind = windAccelPerFrame(params.windSpeed, params.windDirection);
   const v0 = initialVelocity(
     params.power,
@@ -167,7 +172,7 @@ export function sampleTrajectoryWithTerminal(
     const { x, y } = body;
     terminal = { x, y };
     if (i % sampleEvery === 0) pts.push({ x, y });
-    if (y > GROUND_Y || x < OFFSCREEN_X_MIN || x > OFFSCREEN_X_MAX) break;
+    if (y > gy || x < OFFSCREEN_X_MIN || x > OFFSCREEN_X_MAX) break;
     if (pts.length >= maxPoints) break;
   }
   return { points: pts, terminal };
@@ -256,6 +261,7 @@ export interface AimSolution {
 
 /** Closest approach to target along trajectory; 0 if hit. */
 export function measureShotToTarget(params: ShotParams): number {
+  const gy = params.groundY ?? GROUND_Y;
   const wind = windAccelPerFrame(params.windSpeed, params.windDirection);
   const v0 = initialVelocity(
     params.power,
@@ -273,7 +279,7 @@ export function measureShotToTarget(params: ShotParams): number {
   for (let i = 0; i < MAX_SIM_STEPS; i++) {
     body = simulateStep(body, wind);
     const { x, y } = body;
-    if (y > GROUND_Y || x < OFFSCREEN_X_MIN || x > OFFSCREEN_X_MAX) {
+    if (y > gy || x < OFFSCREEN_X_MIN || x > OFFSCREEN_X_MAX) {
       break;
     }
     const d = Math.hypot(x - params.targetX, y - params.targetY);

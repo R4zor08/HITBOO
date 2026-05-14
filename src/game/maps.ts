@@ -6,6 +6,7 @@ export const DEFAULT_MAP_ID: MapId = 'golden_canopy';
 /**
  * Arena art: `public/maps/*.jpg` (user-provided). Order is display order in pickers.
  * Pairing: birch night, cave, railed deck, god-ray forest, lakeside, trail, city view, highway, warm canopy, alpine.
+ * `groundYPercent` defaults in physics to 90 when omitted; set per map to align ballistics with painted ground.
  */
 export const MAPS: MapDefinition[] = [
   {

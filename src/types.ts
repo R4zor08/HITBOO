@@ -91,6 +91,11 @@ export interface MapDefinition {
   backgroundSrc: string;
   overlayTint?: string;
   windBias?: number;
+  /**
+   * Projectile / miss ground plane in arena percent Y (down = larger).
+   * Omit to use engine default; tune per map art so hits match the painted floor.
+   */
+  groundYPercent?: number;
 }
 
 export interface TurnTimerConfig {

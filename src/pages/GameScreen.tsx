@@ -8,7 +8,6 @@ import {
   XIcon,
   LogOutIcon,
   CircleHelpIcon,
-  TimerIcon,
   MoveLeftIcon,
   MoveRightIcon,
   ArrowUpIcon,
@@ -30,12 +29,12 @@ import type {
   MapId,
   PlayerMovementState,
   PlayerStance,
-  TurnTimerConfig,
   Weapon
 } from '../types';
 import { StickerAvatar } from '../components/game/StickerAvatar';
 import { GameSceneBoundary } from '../components/game/GameSceneBoundary';
 import {
+  GROUND_Y,
   P1_POS,
   P2_POS,
   PROJECTILE_START_Y_OFFSET,
@@ -83,7 +82,6 @@ export function GameScreen({
     throw new Error('GameScreen: local2p mode requires local2pLoadout');
   }
   const practice = gameMode === 'practice';
-  const [isPlayerTurn, setIsPlayerTurn] = useState(true);
   const [playerHp, setPlayerHp] = useState(100);
   const [enemyHp, setEnemyHp] = useState(100);
   const [wind, setWind] = useState({
@@ -125,19 +123,6 @@ export function GameScreen({
       null
     );
   }, [local2pLoadout]);
-
-  const activeWeapon = useMemo((): Weapon => {
-    if (local2p && p1LoadoutWeapon && p2LoadoutWeapon) {
-      return isPlayerTurn ? p1LoadoutWeapon : p2LoadoutWeapon;
-    }
-    return selectedWeapon;
-  }, [
-    local2p,
-    p1LoadoutWeapon,
-    p2LoadoutWeapon,
-    isPlayerTurn,
-    selectedWeapon
-  ]);
 
   const enemyWeapon = useMemo(() => {
     if (local2p && p2LoadoutWeapon) return p2LoadoutWeapon;
@@ -183,7 +168,6 @@ export function GameScreen({
   const [aimPower, setAimPower] = useState(0);
   const [aimPullDeg, setAimPullDeg] = useState(0);
   const [releaseShaking, setReleaseShaking] = useState(false);
-  const [turnNudgeX, setTurnNudgeX] = useState(0);
   const gameRootRef = useRef<HTMLDivElement>(null);
   const loadoutScrollRef = useRef<HTMLDivElement>(null);
   const slingshotDraggingRef = useRef(false);
@@ -206,6 +190,16 @@ export function GameScreen({
       typeof document !== 'undefined' && !!document.fullscreenElement
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const playerHpRef = useRef(playerHp);
+  const enemyHpRef = useRef(enemyHp);
+  const local2pRef = useRef(local2p);
+  const settingsOpenRef = useRef(settingsOpen);
+  const matchHelpOpenRef = useRef(matchHelpOpen);
+  playerHpRef.current = playerHp;
+  enemyHpRef.current = enemyHp;
+  local2pRef.current = local2p;
+  settingsOpenRef.current = settingsOpen;
+  matchHelpOpenRef.current = matchHelpOpen;
   const [reduceMotion, setReduceMotion] = useState(
     progress.settings.reduceMotion
   );
@@ -233,17 +227,9 @@ export function GameScreen({
   const enemyRankLabel = local2p ? '—' : String(enemyRank);
   const playerDisplayName = local2p ? 'Player 1' : progress.playerName;
   const playerRankLabel = local2p ? '—' : String(progress.playerRank);
-  const canAim = local2p || isPlayerTurn;
+  const canAim = !local2p;
   const activeMap = useMemo(() => getMapById(mapId), [mapId]);
-  const [turnTimerConfig, setTurnTimerConfig] = useState<TurnTimerConfig>({
-    durationSec: 8
-  });
-  const [turnTimeLeftMs, setTurnTimeLeftMs] = useState(
-    turnTimerConfig.durationSec * 1000
-  );
-  const deadlineRef = useRef<number | null>(null);
-  const pausedAtRef = useRef<number | null>(null);
-  const turnExpiredRef = useRef(false);
+  const groundY = activeMap.groundYPercent ?? GROUND_Y;
   const [p1Move, setP1Move] = useState<PlayerMovementState>({
     x: P1_POS.x,
     yOffset: 0,
@@ -279,11 +265,21 @@ export function GameScreen({
     isAimingRef.current = isAiming;
   }, [isAiming]);
 
-  useEffect(() => {
-    setTurnNudgeX(isPlayerTurn ? 1.6 : -1.6);
-    const id = window.setTimeout(() => setTurnNudgeX(0), 480);
-    return () => window.clearTimeout(id);
-  }, [isPlayerTurn]);
+  const [chargingBy, setChargingBy] = useState<'p1' | 'p2' | null>(null);
+  const [p1Charge01, setP1Charge01] = useState(0);
+  const [p2Charge01, setP2Charge01] = useState(0);
+  const [playerHitTint, setPlayerHitTint] = useState(false);
+  const [enemyHitTint, setEnemyHitTint] = useState(false);
+  const keysHeldRef = useRef({
+    p1Left: false,
+    p1Right: false,
+    p2Left: false,
+    p2Right: false
+  });
+  const chargeStartRef = useRef<{ p1: number | null; p2: number | null }>({
+    p1: null,
+    p2: null
+  });
 
   useEffect(() => {
     setAimSensitivity(progress.settings.defaultAimSensitivity);
@@ -307,142 +303,206 @@ export function GameScreen({
   }, [arenaReady]);
   const windRef = useRef(wind);
   windRef.current = wind;
-  const isPlayerTurnRef = useRef(isPlayerTurn);
-  isPlayerTurnRef.current = isPlayerTurn;
 
   const trajectoryPreview = useMemo(() => {
-    if (!isAiming || aimPower <= 5) {
-      return { points: [] as { x: number; y: number }[], terminal: null as { x: number; y: number } | null };
+    if (local2p && p1LoadoutWeapon && p2LoadoutWeapon && chargingBy) {
+      const shooterP1 = chargingBy === 'p1';
+      const w = shooterP1 ? p1LoadoutWeapon : p2LoadoutWeapon;
+      const ch = shooterP1 ? p1Charge01 : p2Charge01;
+      const sol = findBestAim({
+        shooterFacingRight: shooterP1,
+        velocityScale: w.velocityScale,
+        windSpeed: wind.speed,
+        windDirection: wind.direction,
+        startX: shooterP1 ? p1Move.x : p2Move.x,
+        startY:
+          (shooterP1 ? P1_POS.y + p1Move.yOffset : P2_POS.y + p2Move.yOffset) +
+          PROJECTILE_START_Y_OFFSET,
+        targetX: shooterP1 ? p2Move.x : p1Move.x,
+        targetY: shooterP1
+          ? P2_POS.y + p2Move.yOffset
+          : P1_POS.y + p1Move.yOffset,
+        groundY
+      });
+      const pMin = 25;
+      const power = Math.max(
+        pMin,
+        pMin + (sol.power - pMin) * Math.max(0.08, ch)
+      );
+      const { points, terminal } = sampleTrajectoryWithTerminal({
+        power,
+        angleDeg: sol.angleDeg,
+        shooterFacingRight: shooterP1,
+        velocityScale: w.velocityScale,
+        windSpeed: wind.speed,
+        windDirection: wind.direction,
+        startX: shooterP1 ? p1Move.x : p2Move.x,
+        startY:
+          (shooterP1 ? P1_POS.y + p1Move.yOffset : P2_POS.y + p2Move.yOffset) +
+          PROJECTILE_START_Y_OFFSET,
+        groundY
+      });
+      return {
+        points,
+        terminal,
+        aimAngleDeg: sol.angleDeg,
+        facingRight: shooterP1
+      };
     }
-    const facing = isPlayerTurn;
-    const startX = isPlayerTurn ? p1Move.x : p2Move.x;
-    const startY =
-      (isPlayerTurn ? P1_POS.y + p1Move.yOffset : P2_POS.y + p2Move.yOffset) +
-      PROJECTILE_START_Y_OFFSET;
-    return sampleTrajectoryWithTerminal({
+    if (!isAiming || aimPower <= 5) {
+      return {
+        points: [] as { x: number; y: number }[],
+        terminal: null as { x: number; y: number } | null,
+        aimAngleDeg: aimAngle,
+        facingRight: true
+      };
+    }
+    const startX = p1Move.x;
+    const startY = P1_POS.y + p1Move.yOffset + PROJECTILE_START_Y_OFFSET;
+    const { points, terminal } = sampleTrajectoryWithTerminal({
       power: aimPower,
       angleDeg: aimAngle,
-      shooterFacingRight: facing,
-      velocityScale: activeWeapon.velocityScale,
+      shooterFacingRight: true,
+      velocityScale: selectedWeapon.velocityScale,
       windSpeed: wind.speed,
       windDirection: wind.direction,
       startX,
-      startY
+      startY,
+      groundY
     });
+    return {
+      points,
+      terminal,
+      aimAngleDeg: aimAngle,
+      facingRight: true
+    };
   }, [
-    isAiming,
-    aimPower,
-    aimAngle,
-    isPlayerTurn,
+    local2p,
+    p1LoadoutWeapon,
+    p2LoadoutWeapon,
+    chargingBy,
+    p1Charge01,
+    p2Charge01,
     p1Move.x,
     p1Move.yOffset,
     p2Move.x,
     p2Move.yOffset,
-    activeWeapon.velocityScale,
     wind.speed,
-    wind.direction
+    wind.direction,
+    groundY,
+    isAiming,
+    aimPower,
+    aimAngle,
+    selectedWeapon.velocityScale
   ]);
 
   const previewPoints = trajectoryPreview.points;
   const previewTerminal = trajectoryPreview.terminal;
+  const previewAimAngleDeg = trajectoryPreview.aimAngleDeg;
+  const previewFacingRight = trajectoryPreview.facingRight;
 
   const sceneCamera = useMemo(() => {
     const centerX = (p1Move.x + p2Move.x) / 2;
     const centerOffset = (50 - centerX) * 0.09;
     if (reduceMotion) {
-      return { scale: 0.98, x: centerOffset + turnNudgeX, y: 0 };
+      return { scale: 0.98, x: centerOffset, y: 0 };
     }
     const aimScale = isAiming ? 1 + (aimPower / 100) * 0.045 : 1;
     const panX =
-      (isAiming
-        ? (isPlayerTurn ? 1.35 : -1.35) * (aimPower / 100) * 1.1
-        : 0) + turnNudgeX + centerOffset;
+      (isAiming ? 1.35 * (aimPower / 100) * 1.1 : 0) + centerOffset;
     const panY = isAiming ? -0.75 * (aimPower / 100) : 0;
     return { scale: aimScale * 0.98, x: panX, y: panY };
-  }, [reduceMotion, isAiming, aimPower, isPlayerTurn, turnNudgeX, p1Move.x, p2Move.x]);
+  }, [reduceMotion, isAiming, aimPower, p1Move.x, p2Move.x]);
 
   const previewStroke = useMemo(
     () =>
-      local2p
-        ? isPlayerTurn
-          ? progress.playerAccentHex
-          : '#ff00e5'
+      local2p && chargingBy === 'p2'
+        ? '#ff00e5'
         : progress.playerAccentHex,
-    [local2p, isPlayerTurn, progress.playerAccentHex]
+    [local2p, chargingBy, progress.playerAccentHex]
   );
 
   const projectileStart = useMemo(() => {
-    const startX = isPlayerTurn ? p1Move.x : p2Move.x;
-    const startY =
-      (isPlayerTurn ? P1_POS.y + p1Move.yOffset : P2_POS.y + p2Move.yOffset) +
-      PROJECTILE_START_Y_OFFSET;
-    return { startX, startY };
-  }, [isPlayerTurn, p1Move.x, p1Move.yOffset, p2Move.x, p2Move.yOffset]);
-
-  const activeStance = isPlayerTurn ? p1Move.stance : p2Move.stance;
-
-  const moveActivePlayer = useCallback((dx: number) => {
-    if (isPlayerTurnRef.current) {
-      setP1Move((s) => ({
-        ...s,
-        x: Math.max(ARENA_X_MIN, Math.min(ARENA_X_MAX, s.x + dx))
-      }));
-    } else {
-      setP2Move((s) => ({
-        ...s,
-        x: Math.max(ARENA_X_MIN, Math.min(ARENA_X_MAX, s.x + dx))
-      }));
+    if (local2p && chargingBy === 'p2') {
+      return {
+        startX: p2Move.x,
+        startY: P2_POS.y + p2Move.yOffset + PROJECTILE_START_Y_OFFSET
+      };
     }
-  }, []);
+    return {
+      startX: p1Move.x,
+      startY: P1_POS.y + p1Move.yOffset + PROJECTILE_START_Y_OFFSET
+    };
+  }, [
+    local2p,
+    chargingBy,
+    p1Move.x,
+    p1Move.yOffset,
+    p2Move.x,
+    p2Move.yOffset
+  ]);
 
-  const jumpActivePlayer = useCallback(() => {
-    if (isPlayerTurnRef.current) {
-      setP1Move((s) => {
-        if (!s.grounded) return s;
-        return { ...s, grounded: false, vy: -1.9, stance: 'jumping' };
-      });
-    } else {
-      setP2Move((s) => {
-        if (!s.grounded) return s;
-        return { ...s, grounded: false, vy: -1.9, stance: 'jumping' };
-      });
-    }
-  }, []);
+  const activeStance = p1Move.stance;
 
-  const cycleDownStance = useCallback(() => {
+  const moveP1 = useCallback((dx: number) => {
+    if (playerHp <= 0) return;
+    setP1Move((s) => ({
+      ...s,
+      x: Math.max(ARENA_X_MIN, Math.min(ARENA_X_MAX, s.x + dx))
+    }));
+  }, [playerHp]);
+
+  const moveP2 = useCallback((dx: number) => {
+    if (enemyHp <= 0) return;
+    setP2Move((s) => ({
+      ...s,
+      x: Math.max(ARENA_X_MIN, Math.min(ARENA_X_MAX, s.x + dx))
+    }));
+  }, [enemyHp]);
+
+  const jumpP1 = useCallback(() => {
+    if (playerHp <= 0) return;
+    setP1Move((s) => {
+      if (!s.grounded) return s;
+      return { ...s, grounded: false, vy: -1.9, stance: 'jumping' };
+    });
+  }, [playerHp]);
+
+  const jumpP2 = useCallback(() => {
+    if (enemyHp <= 0) return;
+    setP2Move((s) => {
+      if (!s.grounded) return s;
+      return { ...s, grounded: false, vy: -1.9, stance: 'jumping' };
+    });
+  }, [enemyHp]);
+
+  const cycleP1Stance = useCallback(() => {
     const cycle = (stance: PlayerStance): PlayerStance =>
       stance === 'standing'
         ? 'crouching'
         : stance === 'crouching'
           ? 'prone'
           : 'standing';
-    if (isPlayerTurnRef.current) {
-      setP1Move((s) => ({ ...s, stance: cycle(s.stance) }));
-    } else {
-      setP2Move((s) => ({ ...s, stance: cycle(s.stance) }));
-    }
-  }, []);
+    if (playerHp <= 0) return;
+    setP1Move((s) => ({ ...s, stance: cycle(s.stance) }));
+  }, [playerHp]);
 
   const playerStickerAim = useMemo(() => {
-    if (!canAim || !isAiming || !isPlayerTurn) return null;
+    if (local2p) {
+      if (chargingBy !== 'p1') return null;
+      return { isCharging: p1Charge01 > 0.02, aimPullDeg: 0 };
+    }
+    if (!canAim || !isAiming) return null;
     return { isCharging: aimPower > 5, aimPullDeg };
-  }, [canAim, isAiming, isPlayerTurn, aimPower, aimPullDeg]);
+  }, [local2p, chargingBy, p1Charge01, canAim, isAiming, aimPower, aimPullDeg]);
 
   const enemyStickerAim = useMemo(() => {
-    if (!canAim || !isAiming || isPlayerTurn) return null;
-    return { isCharging: aimPower > 5, aimPullDeg };
-  }, [canAim, isAiming, isPlayerTurn, aimPower, aimPullDeg]);
-
-  const turnBannerText = useMemo(() => {
-    const base = local2p
-      ? isPlayerTurn
-        ? 'PLAYER 1 TURN'
-        : 'PLAYER 2 TURN'
-      : isPlayerTurn
-        ? 'YOUR TURN'
-        : 'ENEMY TURN';
-    return `${base} - ${String(Math.ceil(turnTimeLeftMs / 1000)).padStart(2, '0')}S`;
-  }, [local2p, isPlayerTurn, turnTimeLeftMs]);
+    if (local2p) {
+      if (chargingBy !== 'p2') return null;
+      return { isCharging: p2Charge01 > 0.02, aimPullDeg: 0 };
+    }
+    return null;
+  }, [local2p, chargingBy, p2Charge01]);
 
   const windArrowMotion = useMemo(() => {
     if (reduceMotion) {
@@ -552,7 +612,30 @@ export function GameScreen({
     ]
   );
 
+  const rollWind = useCallback(() => {
+    const tier = progress.settings.difficulty;
+    let windMin = 2;
+    let windSpan = 17;
+    if (tier === 'casual') {
+      windMin = 0;
+      windSpan = 15;
+    } else if (tier === 'hard') {
+      windMin = 5;
+      windSpan = 18;
+    }
+    const newWind = {
+      speed: Math.max(
+        0,
+        Math.floor(Math.random() * windSpan) + windMin + (activeMap.windBias ?? 0)
+      ),
+      direction: (Math.random() > 0.5 ? 'right' : 'left') as 'left' | 'right'
+    };
+    windRef.current = newWind;
+    setWind(newWind);
+  }, [progress.settings.difficulty, activeMap.windBias]);
+
   const scheduleEnemyShot = useCallback(() => {
+    if (enemyHp <= 0 || playerHp <= 0) return;
     const w = windRef.current;
     const sol = findBestAim({
       shooterFacingRight: false,
@@ -562,7 +645,8 @@ export function GameScreen({
       startX: p2Move.x,
       startY: P2_POS.y + p2Move.yOffset + PROJECTILE_START_Y_OFFSET,
       targetX: p1Move.x,
-      targetY: P1_POS.y + p1Move.yOffset
+      targetY: P1_POS.y + p1Move.yOffset,
+      groundY
     });
     const err = applyAimError(
       sol.power,
@@ -576,55 +660,56 @@ export function GameScreen({
       timestamp: Date.now(),
       velocityScale: enemyWeapon.velocityScale,
       baseDamage: enemyWeapon.damage,
-      projectileStyle: enemyWeapon.projectileStyle
+      projectileStyle: enemyWeapon.projectileStyle,
+      shooterWasPlayer: false
     });
     updateMatchStats((prev) => ({ ...prev, enemyShots: prev.enemyShots + 1 }));
     playBlip(220, 0.06, audioMuted);
-  }, [enemyWeapon, enemyAimError, audioMuted, updateMatchStats, p1Move.x, p1Move.yOffset, p2Move.x, p2Move.yOffset]);
+  }, [
+    enemyWeapon,
+    enemyAimError,
+    audioMuted,
+    updateMatchStats,
+    p1Move.x,
+    p1Move.yOffset,
+    p2Move.x,
+    p2Move.yOffset,
+    groundY,
+    enemyHp,
+    playerHp
+  ]);
 
-  const advanceWindAndTurn = useCallback(
-    (shooterWasPlayer: boolean) => {
-      const tier = progress.settings.difficulty;
-      let windMin = 2;
-      let windSpan = 17;
-      if (tier === 'casual') {
-        windMin = 0;
-        windSpan = 15;
-      } else if (tier === 'hard') {
-        windMin = 5;
-        windSpan = 18;
-      }
-      const newWind = {
-        speed: Math.max(
-          0,
-          Math.floor(Math.random() * windSpan) + windMin + (activeMap.windBias ?? 0)
-        ),
-        direction: (Math.random() > 0.5 ? 'right' : 'left') as
-          | 'left'
-          | 'right'
-      };
-      windRef.current = newWind;
-      setWind(newWind);
-      setIsPlayerTurn((t) => !t);
-      if (!local2p && shooterWasPlayer) {
-        setTimeout(() => scheduleEnemyShot(), 2000);
-      }
-    },
-    [scheduleEnemyShot, progress.settings.difficulty, local2p, activeMap.windBias]
-  );
+  const scheduleEnemyShotRef = useRef(scheduleEnemyShot);
+  scheduleEnemyShotRef.current = scheduleEnemyShot;
+  const nextEnemyTimeoutRef = useRef<number | null>(null);
 
   const handleShotResult = useCallback(
     (result: ShotResult) => {
       setTriggerFire(null);
       const shooterWasPlayer = result.shooterWasPlayer;
       updateMatchStats((prev) => ({ ...prev, turns: prev.turns + 1 }));
+      rollWind();
+
+      const queueNextEnemy = () => {
+        if (local2pRef.current) return;
+        if (nextEnemyTimeoutRef.current != null) {
+          window.clearTimeout(nextEnemyTimeoutRef.current);
+        }
+        nextEnemyTimeoutRef.current = window.setTimeout(() => {
+          nextEnemyTimeoutRef.current = null;
+          if (local2pRef.current) return;
+          if (settingsOpenRef.current || matchHelpOpenRef.current) return;
+          if (playerHpRef.current <= 0 || enemyHpRef.current <= 0) return;
+          scheduleEnemyShotRef.current();
+        }, 2600);
+      };
 
       if (result.outcome === 'miss') {
         playMiss(audioMuted);
         if (typeof navigator !== 'undefined' && navigator.vibrate && !audioMuted) {
           navigator.vibrate(20);
         }
-        advanceWindAndTurn(shooterWasPlayer);
+        queueNextEnemy();
         return;
       }
 
@@ -640,14 +725,14 @@ export function GameScreen({
           playerHits: prev.playerHits + 1,
           playerDamage: prev.playerDamage + damage
         }));
+        setEnemyHitTint(true);
+        window.setTimeout(() => setEnemyHitTint(false), 220);
         setEnemyHp((prev) => {
           const next = practice
             ? Math.max(1, prev - damage)
             : Math.max(0, prev - damage);
           if (!practice && next <= 0) {
             setTimeout(() => onGameOver(buildMatchResult('player')), 1500);
-          } else {
-            advanceWindAndTurn(true);
           }
           return next;
         });
@@ -657,21 +742,22 @@ export function GameScreen({
           enemyHits: prev.enemyHits + 1,
           enemyDamage: prev.enemyDamage + damage
         }));
+        setPlayerHitTint(true);
+        window.setTimeout(() => setPlayerHitTint(false), 220);
         setPlayerHp((prev) => {
           const next = Math.max(0, prev - damage);
           if (next <= 0) {
             setTimeout(() => onGameOver(buildMatchResult('enemy')), 1500);
-          } else {
-            advanceWindAndTurn(false);
           }
           return next;
         });
       }
+      queueNextEnemy();
     },
     [
       practice,
       audioMuted,
-      advanceWindAndTurn,
+      rollWind,
       onGameOver,
       buildMatchResult,
       updateMatchStats
@@ -684,48 +770,19 @@ export function GameScreen({
     const angle = aimAngleRef.current;
     if (power < 5) return;
 
-    if (local2p && p1LoadoutWeapon && p2LoadoutWeapon) {
-      if (isPlayerTurnRef.current) {
-        updateMatchStats((prev) => ({
-          ...prev,
-          playerShots: prev.playerShots + 1
-        }));
-        setTriggerFire({
-          power,
-          angle,
-          timestamp: Date.now(),
-          velocityScale: p1LoadoutWeapon.velocityScale,
-          baseDamage: p1LoadoutWeapon.damage,
-          projectileStyle: p1LoadoutWeapon.projectileStyle
-        });
-      } else {
-        updateMatchStats((prev) => ({
-          ...prev,
-          enemyShots: prev.enemyShots + 1
-        }));
-        setTriggerFire({
-          power,
-          angle,
-          timestamp: Date.now(),
-          velocityScale: p2LoadoutWeapon.velocityScale,
-          baseDamage: p2LoadoutWeapon.damage,
-          projectileStyle: p2LoadoutWeapon.projectileStyle
-        });
-      }
-    } else {
-      updateMatchStats((prev) => ({
-        ...prev,
-        playerShots: prev.playerShots + 1
-      }));
-      setTriggerFire({
-        power,
-        angle,
-        timestamp: Date.now(),
-        velocityScale: selectedWeapon.velocityScale,
-        baseDamage: selectedWeapon.damage,
-        projectileStyle: selectedWeapon.projectileStyle
-      });
-    }
+    updateMatchStats((prev) => ({
+      ...prev,
+      playerShots: prev.playerShots + 1
+    }));
+    setTriggerFire({
+      power,
+      angle,
+      timestamp: Date.now(),
+      velocityScale: selectedWeapon.velocityScale,
+      baseDamage: selectedWeapon.damage,
+      projectileStyle: selectedWeapon.projectileStyle,
+      shooterWasPlayer: true
+    });
     setIsAiming(false);
     setAimPullDeg(0);
     if (!reduceMotion) {
@@ -733,15 +790,88 @@ export function GameScreen({
       window.setTimeout(() => setReleaseShaking(false), 340);
     }
     playBlip(440, 0.08, audioMuted);
-  }, [
-    local2p,
-    p1LoadoutWeapon,
-    p2LoadoutWeapon,
-    selectedWeapon,
-    updateMatchStats,
-    audioMuted,
-    reduceMotion
-  ]);
+  }, [selectedWeapon, updateMatchStats, audioMuted, reduceMotion]);
+
+  const fireKeyboardVolley = useCallback(
+    (shooterWasPlayer: boolean, charge01: number) => {
+      if (!local2p || !p1LoadoutWeapon || !p2LoadoutWeapon) return;
+      const dead = shooterWasPlayer ? playerHp <= 0 : enemyHp <= 0;
+      if (dead) return;
+      const w = shooterWasPlayer ? p1LoadoutWeapon : p2LoadoutWeapon;
+      const sol = findBestAim({
+        shooterFacingRight: shooterWasPlayer,
+        velocityScale: w.velocityScale,
+        windSpeed: wind.speed,
+        windDirection: wind.direction,
+        startX: shooterWasPlayer ? p1Move.x : p2Move.x,
+        startY:
+          (shooterWasPlayer ? P1_POS.y + p1Move.yOffset : P2_POS.y + p2Move.yOffset) +
+          PROJECTILE_START_Y_OFFSET,
+        targetX: shooterWasPlayer ? p2Move.x : p1Move.x,
+        targetY: shooterWasPlayer
+          ? P2_POS.y + p2Move.yOffset
+          : P1_POS.y + p1Move.yOffset,
+        groundY
+      });
+      const pMin = 25;
+      const power = Math.max(
+        pMin,
+        pMin + (sol.power - pMin) * Math.max(0.08, charge01)
+      );
+      if (power < pMin + 0.01) return;
+      if (shooterWasPlayer) {
+        updateMatchStats((prev) => ({
+          ...prev,
+          playerShots: prev.playerShots + 1
+        }));
+      } else {
+        updateMatchStats((prev) => ({
+          ...prev,
+          enemyShots: prev.enemyShots + 1
+        }));
+      }
+      setTriggerFire({
+        power,
+        angle: sol.angleDeg,
+        timestamp: Date.now(),
+        velocityScale: w.velocityScale,
+        baseDamage: w.damage,
+        projectileStyle: w.projectileStyle,
+        shooterWasPlayer
+      });
+      if (!reduceMotion) {
+        setReleaseShaking(true);
+        window.setTimeout(() => setReleaseShaking(false), 220);
+      }
+      playBlip(440, 0.08, audioMuted);
+    },
+    [
+      local2p,
+      p1LoadoutWeapon,
+      p2LoadoutWeapon,
+      playerHp,
+      enemyHp,
+      wind.speed,
+      wind.direction,
+      p1Move.x,
+      p1Move.yOffset,
+      p2Move.x,
+      p2Move.yOffset,
+      groundY,
+      updateMatchStats,
+      audioMuted,
+      reduceMotion
+    ]
+  );
+
+  const fireKeyboardVolleyRef = useRef(fireKeyboardVolley);
+  fireKeyboardVolleyRef.current = fireKeyboardVolley;
+
+  useEffect(() => {
+    if (local2p) return;
+    const id = window.setTimeout(() => scheduleEnemyShotRef.current(), 2200);
+    return () => window.clearTimeout(id);
+  }, [local2p]);
 
   const handleFire = useCallback(() => {
     if (!canAim || aimPower < 5) return;
@@ -767,63 +897,37 @@ export function GameScreen({
     return () => window.clearInterval(id);
   }, []);
 
-  const skipCurrentTurn = useCallback(() => {
-    if (triggerFire) return;
-    setIsAiming(false);
-    setAimPower(0);
-    setAimPullDeg(0);
-    setAimAngle(45);
-    playBlip(180, 0.05, audioMuted);
-    advanceWindAndTurn(isPlayerTurnRef.current);
-  }, [advanceWindAndTurn, triggerFire, audioMuted]);
-
   useEffect(() => {
-    deadlineRef.current = Date.now() + turnTimerConfig.durationSec * 1000;
-    turnExpiredRef.current = false;
-    pausedAtRef.current = null;
-    setTurnTimeLeftMs(turnTimerConfig.durationSec * 1000);
-  }, [isPlayerTurn, turnTimerConfig.durationSec]);
-
-  useEffect(() => {
-    const paused = settingsOpen || matchHelpOpen || !!triggerFire;
-    if (paused) {
-      if (!pausedAtRef.current) {
-        pausedAtRef.current = Date.now();
-      }
-      return;
-    }
-    if (pausedAtRef.current && deadlineRef.current) {
-      const pausedFor = Date.now() - pausedAtRef.current;
-      deadlineRef.current += pausedFor;
-      pausedAtRef.current = null;
-    }
-  }, [settingsOpen, matchHelpOpen, triggerFire]);
-
-  useEffect(() => {
-    if (settingsOpen || matchHelpOpen || triggerFire) return;
     const id = window.setInterval(() => {
-      if (!deadlineRef.current) return;
-      const left = Math.max(0, deadlineRef.current - Date.now());
-      setTurnTimeLeftMs(left);
-      if (left <= 0 && !turnExpiredRef.current) {
-        turnExpiredRef.current = true;
-        skipCurrentTurn();
-      }
-    }, 120);
+      const k = keysHeldRef.current;
+      if (k.p1Left) moveP1(-1.6);
+      if (k.p1Right) moveP1(1.6);
+      if (k.p2Left) moveP2(-1.6);
+      if (k.p2Right) moveP2(1.6);
+    }, 16);
     return () => window.clearInterval(id);
-  }, [settingsOpen, matchHelpOpen, triggerFire, skipCurrentTurn]);
+  }, [moveP1, moveP2]);
 
-  const timerWarnSecondRef = useRef<number | null>(null);
   useEffect(() => {
-    const s = Math.ceil(turnTimeLeftMs / 1000);
-    if (s > 3 || s <= 0) {
-      timerWarnSecondRef.current = null;
-      return;
-    }
-    if (timerWarnSecondRef.current === s) return;
-    timerWarnSecondRef.current = s;
-    playBlip(320 + s * 40, 0.04, audioMuted);
-  }, [turnTimeLeftMs, audioMuted]);
+    if (!local2p) return;
+    let raf = 0;
+    const tick = () => {
+      const now = performance.now();
+      if (chargeStartRef.current.p1 != null) {
+        setP1Charge01(Math.min(1, (now - chargeStartRef.current.p1) / 1400));
+      } else {
+        setP1Charge01(0);
+      }
+      if (chargeStartRef.current.p2 != null) {
+        setP2Charge01(Math.min(1, (now - chargeStartRef.current.p2) / 1400));
+      } else {
+        setP2Charge01(0);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [local2p]);
 
   const handleSlingshotPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -835,10 +939,8 @@ export function GameScreen({
         e.clientY,
         root.getBoundingClientRect()
       );
-      const ax = isPlayerTurnRef.current ? p1Move.x : p2Move.x;
-      const ay = isPlayerTurnRef.current
-        ? P1_POS.y + p1Move.yOffset
-        : P2_POS.y + p2Move.yOffset;
+      const ax = p1Move.x;
+      const ay = P1_POS.y + p1Move.yOffset;
       if (!pointerNearAnchor(pct.x, pct.y, ax, ay, 10)) return;
       try {
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -847,11 +949,10 @@ export function GameScreen({
       }
       slingshotDraggingRef.current = true;
       setIsAiming(true);
-      const facing = isPlayerTurnRef.current;
       const r = slingshotAimFromPointer(
         pct,
         { x: ax, y: ay },
-        facing,
+        true,
         aimSensitivityRef.current
       );
       setAimAngle(r.aimAngle);
@@ -860,9 +961,8 @@ export function GameScreen({
       aimAngleRef.current = r.aimAngle;
       aimPowerRef.current = r.aimPower;
     },
-    [settingsOpen, p1Move.x, p1Move.yOffset, p2Move.x, p2Move.yOffset]
+    [settingsOpen, p1Move.x, p1Move.yOffset]
   );
-
   const handleSlingshotPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (!slingshotDraggingRef.current || !canAimRef.current) return;
@@ -873,15 +973,12 @@ export function GameScreen({
         e.clientY,
         root.getBoundingClientRect()
       );
-      const ax = isPlayerTurnRef.current ? p1Move.x : p2Move.x;
-      const ay = isPlayerTurnRef.current
-        ? P1_POS.y + p1Move.yOffset
-        : P2_POS.y + p2Move.yOffset;
-      const facing = isPlayerTurnRef.current;
+      const ax = p1Move.x;
+      const ay = P1_POS.y + p1Move.yOffset;
       const r = slingshotAimFromPointer(
         pct,
         { x: ax, y: ay },
-        facing,
+        true,
         aimSensitivityRef.current
       );
       setAimAngle(r.aimAngle);
@@ -890,9 +987,8 @@ export function GameScreen({
       aimAngleRef.current = r.aimAngle;
       aimPowerRef.current = r.aimPower;
     },
-    [p1Move.x, p1Move.yOffset, p2Move.x, p2Move.yOffset]
+    [p1Move.x, p1Move.yOffset]
   );
-
   const handleSlingshotPointerUp = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       try {
@@ -922,11 +1018,46 @@ export function GameScreen({
   );
 
   useEffect(() => {
-    const onKey = (ev: KeyboardEvent) => {
-      if (!canAimRef.current || settingsOpen || matchHelpOpen) return;
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (settingsOpen || matchHelpOpen) return;
       const t = ev.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
 
+      if (local2p) {
+        const k = ev.key;
+        if (
+          ['a', 'A', 'd', 'D', 'w', 'W', 'f', 'F', 'l', 'L'].includes(k) ||
+          k === 'ArrowLeft' ||
+          k === 'ArrowRight' ||
+          k === 'ArrowUp'
+        ) {
+          ev.preventDefault();
+        }
+        if (k === 'a' || k === 'A') keysHeldRef.current.p1Left = true;
+        else if (k === 'd' || k === 'D') keysHeldRef.current.p1Right = true;
+        else if (k === 'w' || k === 'W') {
+          if (ev.repeat) return;
+          if (playerHpRef.current > 0) jumpP1();
+        } else if (k === 'f' || k === 'F') {
+          if (playerHpRef.current > 0 && chargeStartRef.current.p1 == null) {
+            chargeStartRef.current.p1 = performance.now();
+            setChargingBy('p1');
+          }
+        } else if (k === 'ArrowLeft') keysHeldRef.current.p2Left = true;
+        else if (k === 'ArrowRight') keysHeldRef.current.p2Right = true;
+        else if (k === 'ArrowUp') {
+          if (ev.repeat) return;
+          if (enemyHpRef.current > 0) jumpP2();
+        } else if (k === 'l' || k === 'L') {
+          if (enemyHpRef.current > 0 && chargeStartRef.current.p2 == null) {
+            chargeStartRef.current.p2 = performance.now();
+            setChargingBy('p2');
+          }
+        }
+        return;
+      }
+
+      if (!canAimRef.current) return;
       const k = ev.key;
       if (
         k === 'ArrowLeft' ||
@@ -944,28 +1075,61 @@ export function GameScreen({
       ) {
         ev.preventDefault();
       }
+      if (k === 'ArrowLeft' || k === 'a' || k === 'A') moveP1(-1.6);
+      else if (k === 'ArrowRight' || k === 'd' || k === 'D') moveP1(1.6);
+      else if (k === 'ArrowUp' || k === 'w' || k === 'W') {
+        if (ev.repeat) return;
+        jumpP1();
+      } else if (k === 'ArrowDown' || k === 's' || k === 'S') cycleP1Stance();
+      else if (k === ' ' || k === 'Enter') handleFire();
+    };
 
-      if (k === 'ArrowLeft' || k === 'a' || k === 'A') {
-        moveActivePlayer(-1.6);
-      } else if (k === 'ArrowRight' || k === 'd' || k === 'D') {
-        moveActivePlayer(1.6);
-      } else if (k === 'ArrowUp' || k === 'w' || k === 'W') {
-        jumpActivePlayer();
-      } else if (k === 'ArrowDown' || k === 's' || k === 'S') {
-        cycleDownStance();
-      } else if (k === ' ' || k === 'Enter') {
-        handleFire();
+    const onKeyUp = (ev: KeyboardEvent) => {
+      if (settingsOpen || matchHelpOpen) return;
+      const t = ev.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+
+      if (local2p) {
+        const k = ev.key;
+        if (k === 'a' || k === 'A') keysHeldRef.current.p1Left = false;
+        else if (k === 'd' || k === 'D') keysHeldRef.current.p1Right = false;
+        else if (k === 'ArrowLeft') keysHeldRef.current.p2Left = false;
+        else if (k === 'ArrowRight') keysHeldRef.current.p2Right = false;
+        else if (k === 'f' || k === 'F') {
+          const started = chargeStartRef.current.p1;
+          chargeStartRef.current.p1 = null;
+          setChargingBy((c) => (c === 'p1' ? null : c));
+          if (started != null && playerHpRef.current > 0) {
+            const ch = Math.min(1, (performance.now() - started) / 1400);
+            fireKeyboardVolleyRef.current(true, ch);
+          }
+        } else if (k === 'l' || k === 'L') {
+          const started = chargeStartRef.current.p2;
+          chargeStartRef.current.p2 = null;
+          setChargingBy((c) => (c === 'p2' ? null : c));
+          if (started != null && enemyHpRef.current > 0) {
+            const ch = Math.min(1, (performance.now() - started) / 1400);
+            fireKeyboardVolleyRef.current(false, ch);
+          }
+        }
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
   }, [
     settingsOpen,
     matchHelpOpen,
+    local2p,
     handleFire,
-    moveActivePlayer,
-    jumpActivePlayer,
-    cycleDownStance
+    moveP1,
+    jumpP1,
+    cycleP1Stance,
+    jumpP2
   ]);
 
   useEffect(() => {
@@ -1008,101 +1172,115 @@ export function GameScreen({
     <div
       ref={gameRootRef}
       className="relative w-full min-h-dvh h-dvh overflow-hidden bg-dark-darker select-none touch-none">
-      <motion.div
-        className="absolute inset-0 origin-[50%_72%]"
-        animate={{
-          scale: sceneCamera.scale,
-          x: sceneCamera.x,
-          y: sceneCamera.y
-        }}
-        transition={
-          reduceMotion
-            ? { duration: 0 }
-            : { type: 'spring', stiffness: 140, damping: 20 }
+      <div className="absolute inset-0">
+      <GameSceneBoundary
+        fallback={
+          <div className="absolute inset-0 z-20 flex items-center justify-center px-6">
+            <GlassCard
+              variant="sticker"
+              className="w-full max-w-xl p-7 text-center shadow-glass backdrop-blur-md border-neon-magenta/60">
+              <h2 className="font-display text-2xl font-black text-neon-magenta">
+                Arena failed to render
+              </h2>
+              <p className="mt-2 text-sm text-gray-300 font-display">
+                We hit a scene error. Return to menu and start a new match.
+              </p>
+              <NeonButton
+                variant="secondary"
+                size="md"
+                className="mt-5"
+                onClick={onExitMatch}>
+                Back to Menu
+              </NeonButton>
+            </GlassCard>
+          </div>
         }>
-        <motion.div
-          className="absolute inset-0"
-          animate={
-            reduceMotion || !releaseShaking
-              ? { x: 0, y: 0 }
-              : { x: [0, -7, 7, -4, 4, 0], y: [0, 3, -3, 2, 0] }
+        <Battlefield
+          windSpeed={wind.speed}
+          windDirection={wind.direction}
+          playerHp={playerHp}
+          enemyHp={enemyHp}
+          mapId={mapId}
+          groundY={groundY}
+          playerHitTint={playerHitTint}
+          enemyHitTint={enemyHitTint}
+          playerPos={{ x: p1Move.x, y: P1_POS.y + p1Move.yOffset }}
+          enemyPos={{ x: p2Move.x, y: P2_POS.y + p2Move.yOffset }}
+          playerStance={p1Move.stance}
+          enemyStance={p2Move.stance}
+          triggerFire={triggerFire}
+          onShotResult={handleShotResult}
+          reduceMotion={reduceMotion}
+          playerAccentHex={progress.playerAccentHex}
+          playerCharacterId={
+            local2p && local2pLoadout
+              ? local2pLoadout.p1CharacterId
+              : progress.equippedCharacterId
           }
-          transition={
-            reduceMotion ? { duration: 0 } : { duration: 0.34, ease: 'easeOut' }
-          }>
-          <GameSceneBoundary
-            fallback={
-              <div className="absolute inset-0 z-20 flex items-center justify-center px-6">
-                <GlassCard
-                  variant="sticker"
-                  className="w-full max-w-xl p-7 text-center shadow-glass backdrop-blur-md border-neon-magenta/60">
-                  <h2 className="font-display text-2xl font-black text-neon-magenta">
-                    Arena failed to render
-                  </h2>
-                  <p className="mt-2 text-sm text-gray-300 font-display">
-                    We hit a scene error. Return to menu and start a new match.
-                  </p>
-                  <NeonButton
-                    variant="secondary"
-                    size="md"
-                    className="mt-5"
-                    onClick={onExitMatch}>
-                    Back to Menu
-                  </NeonButton>
-                </GlassCard>
-              </div>
-            }>
-            <Battlefield
-              isPlayerTurn={isPlayerTurn}
-              windSpeed={wind.speed}
-              windDirection={wind.direction}
-              playerHp={playerHp}
-              enemyHp={enemyHp}
-              mapId={mapId}
-              playerPos={{ x: p1Move.x, y: P1_POS.y + p1Move.yOffset }}
-              enemyPos={{ x: p2Move.x, y: P2_POS.y + p2Move.yOffset }}
-              playerStance={p1Move.stance}
-              enemyStance={p2Move.stance}
-              triggerFire={triggerFire}
-              onShotResult={handleShotResult}
-              reduceMotion={reduceMotion}
-              playerAccentHex={progress.playerAccentHex}
-              playerCharacterId={
-                local2p && local2pLoadout
-                  ? local2pLoadout.p1CharacterId
-                  : progress.equippedCharacterId
-              }
-              enemyCharacterId={
-                local2p && local2pLoadout
-                  ? local2pLoadout.p2CharacterId
-                  : progress.equippedEnemyCharacterId
-              }
-              onReady={handleArenaReady}
-              bodyPartDamage={local2p}
-              playerStickerAim={playerStickerAim}
-              enemyStickerAim={enemyStickerAim}
-            />
-          </GameSceneBoundary>
-          <AimTrajectoryOverlay
-            points={previewPoints}
-            terminal={previewTerminal}
-            startX={projectileStart.startX}
-            startY={projectileStart.startY}
-            aimAngleDeg={aimAngle}
-            facingRight={isPlayerTurn}
-            stroke={previewStroke}
-            reduceMotion={reduceMotion}
-            visible={isAiming && aimPower > 5}
-          />
-          <AimInteractionLayer
-            active={canAim && !settingsOpen && !matchHelpOpen}
-            onPointerDown={handleSlingshotPointerDown}
-            onPointerMove={handleSlingshotPointerMove}
-            onPointerUp={handleSlingshotPointerUp}
-            onPointerCancel={handleSlingshotPointerCancel}
-          />
-        </motion.div>
-      </motion.div>
+          enemyCharacterId={
+            local2p && local2pLoadout
+              ? local2pLoadout.p2CharacterId
+              : progress.equippedEnemyCharacterId
+          }
+          onReady={handleArenaReady}
+          bodyPartDamage={local2p}
+          playerStickerAim={playerStickerAim}
+          enemyStickerAim={enemyStickerAim}
+          wrapDynamic={(playfield) => (
+            <motion.div
+              className="absolute inset-0 origin-[50%_72%]"
+              animate={{
+                scale: sceneCamera.scale,
+                x: sceneCamera.x,
+                y: sceneCamera.y
+              }}
+              transition={
+                reduceMotion
+                  ? { duration: 0 }
+                  : { type: 'spring', stiffness: 140, damping: 20 }
+              }>
+              <motion.div
+                className="absolute inset-0"
+                animate={
+                  reduceMotion || !releaseShaking
+                    ? { x: 0, y: 0 }
+                    : { x: [0, -7, 7, -4, 4, 0], y: [0, 3, -3, 2, 0] }
+                }
+                transition={
+                  reduceMotion ? { duration: 0 } : { duration: 0.34, ease: 'easeOut' }
+                }>
+                {playfield}
+                <AimTrajectoryOverlay
+                  points={previewPoints}
+                  terminal={previewTerminal}
+                  startX={projectileStart.startX}
+                  startY={projectileStart.startY}
+                  aimAngleDeg={previewAimAngleDeg}
+                  facingRight={previewFacingRight}
+                  stroke={previewStroke}
+                  reduceMotion={reduceMotion}
+                  visible={
+                    local2p
+                      ? !!chargingBy &&
+                        (chargingBy === 'p1' ? p1Charge01 : p2Charge01) > 0.02
+                      : isAiming && aimPower > 5
+                  }
+                />
+                {!local2p ? (
+                  <AimInteractionLayer
+                    active={canAim && !settingsOpen && !matchHelpOpen}
+                    onPointerDown={handleSlingshotPointerDown}
+                    onPointerMove={handleSlingshotPointerMove}
+                    onPointerUp={handleSlingshotPointerUp}
+                    onPointerCancel={handleSlingshotPointerCancel}
+                  />
+                ) : null}
+              </motion.div>
+            </motion.div>
+          )}
+        />
+      </GameSceneBoundary>
+      </div>
 
       {arenaFallbackVisible && !arenaReady && (
         <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center px-6">
@@ -1163,14 +1341,18 @@ export function GameScreen({
             <ul className="list-disc space-y-1.5 pl-4 text-xs text-gray-200 marker:text-neon-cyan">
               {local2p ? (
                 <li>
-                  Two players on one device — pass it back each turn; the
-                  glowing fighter is active.
+                  Same keyboard: P1 A/D move, W jump, hold F to charge and release
+                  to shoot. P2 arrows move/jump, hold L to charge and release to
+                  shoot.
                 </li>
               ) : (
                 <li>Offline vs AI — not live PvP.</li>
               )}
-              <li>Drag from the active fighter to aim; release to fire.</li>
-              <li>Keys: arrows / WASD adjust aim; Space or Enter fires.</li>
+              <li>Drag from your fighter to aim; release to fire (solo / vs AI).</li>
+              <li>
+                Keys: WASD + arrows move/jump (solo); Space or Enter fires after
+                aiming.
+              </li>
               <li>Win by bringing the rival to 0 HP.</li>
             </ul>
             {local2p ? (
@@ -1271,85 +1453,24 @@ export function GameScreen({
                 </GlassCard>
               </div>
             )}
-            <GlassCard
-              variant="sticker"
-              className={`pointer-events-none rounded-full border px-3 py-1.5 ${
-                turnTimeLeftMs <= 3000
-                  ? 'border-neon-yellow/70 text-neon-yellow'
-                  : 'border-white/30 text-white'
-              }`}>
-              <span
-                className={`flex items-center gap-1.5 font-display text-xs font-black tracking-wide ${
-                  turnTimeLeftMs <= 3000 && !reduceMotion ? 'animate-pulse' : ''
-                }`}>
-                <TimerIcon size={14} />
-                {String(Math.ceil(turnTimeLeftMs / 1000)).padStart(2, '0')}s
-              </span>
-            </GlassCard>
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={isPlayerTurn ? 'player' : 'enemy'}
-                initial={{
-                  scale: 0.5,
-                  opacity: 0,
-                  y: -20
-                }}
-                animate={{
-                  scale: 1,
-                  opacity: 1,
-                  y: 0
-                }}
-                exit={{
-                  scale: 1.5,
-                  opacity: 0
-                }}
-                className="flex justify-center">
-                <motion.div
-                  variants={{
-                    hidden: {},
-                    visible: {
-                      transition: {
-                        staggerChildren: 0.04,
-                        delayChildren: 0.06
-                      }
-                    }
-                  }}
-                  initial="hidden"
-                  animate="visible"
-                  className={`flex max-w-[min(92vw,18rem)] flex-wrap justify-center gap-y-0.5 rounded-full border bg-dark-card/70 px-2 py-1.5 font-display text-[10px] font-black uppercase leading-tight tracking-[0.08em] drop-shadow-[0_2px_0_rgba(0,0,0,0.6)] sm:max-w-none sm:gap-y-1 sm:px-4 sm:py-2 sm:text-base sm:tracking-[0.14em] md:px-5 md:text-2xl md:tracking-[0.18em] ${isPlayerTurn ? 'text-neon-cyan border-neon-cyan/45' : 'text-neon-magenta border-neon-magenta/45'}`}>
-                  {turnBannerText
-                    .split('')
-                    .map((ch, i) => (
-                      <motion.span
-                        key={`${isPlayerTurn ? 'p' : 'e'}-${i}-${ch}`}
-                        variants={{
-                          hidden: { y: 10, opacity: 0 },
-                          visible: {
-                            y: 0,
-                            opacity: 1,
-                            transition: { ease: 'easeOut' }
-                          }
-                        }}
-                        className="inline-block">
-                        {ch === ' ' ? '\u00A0' : ch}
-                      </motion.span>
-                    ))}
-                </motion.div>
-              </motion.div>
-            </AnimatePresence>
+            {local2p ? (
+              <GlassCard
+                variant="sticker"
+                className="pointer-events-none rounded-full border border-neon-lime/50 px-3 py-1.5 text-neon-lime">
+                <span className="font-display text-[10px] font-black tracking-wide sm:text-xs">
+                  REAL-TIME
+                </span>
+              </GlassCard>
+            ) : null}
 
-            {canAim && (isAiming || aimPower > 4) ? (
+            {!local2p && canAim && (isAiming || aimPower > 4) ? (
               <motion.div
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="pointer-events-none w-[min(14rem,72vw)]">
                 <GlassCard
                   variant="sticker"
-                  className={`border px-3 py-2 ${
-                    isPlayerTurn
-                      ? 'border-neon-cyan/40 shadow-[0_0_16px_rgba(0,240,255,0.12)]'
-                      : 'border-neon-magenta/40 shadow-[0_0_16px_rgba(255,0,229,0.12)]'
-                  }`}>
+                  className="border border-neon-cyan/40 px-3 py-2 shadow-[0_0_16px_rgba(0,240,255,0.12)]">
                   <div className="mb-1 flex justify-between font-display text-[10px] tracking-wide text-gray-300">
                     <span>POWER</span>
                     <span>{Math.round(aimPower)}%</span>
@@ -1363,9 +1484,7 @@ export function GameScreen({
                               scale: [1, 1.04, 1],
                               boxShadow: [
                                 '0 0 0 rgba(0,240,255,0)',
-                                isPlayerTurn
-                                  ? '0 0 18px rgba(0,240,255,0.45)'
-                                  : '0 0 18px rgba(255,0,229,0.45)',
+                                '0 0 18px rgba(0,240,255,0.45)',
                                 '0 0 0 rgba(0,240,255,0)'
                               ]
                             }
@@ -1379,17 +1498,51 @@ export function GameScreen({
                     <ProgressBar
                       progress={aimPower}
                       color={
-                        aimPower > 80
-                          ? 'bg-neon-magenta'
-                          : isPlayerTurn
-                            ? 'bg-neon-cyan'
-                            : 'bg-neon-magenta'
+                        aimPower > 80 ? 'bg-neon-magenta' : 'bg-neon-cyan'
                       }
                       height="h-2.5"
                       variant="arcade"
                       reduceMotion={reduceMotion}
                     />
                   </motion.div>
+                </GlassCard>
+              </motion.div>
+            ) : null}
+
+            {local2p &&
+            chargingBy &&
+            (chargingBy === 'p1' ? p1Charge01 : p2Charge01) > 0.02 ? (
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="pointer-events-none w-[min(14rem,72vw)]">
+                <GlassCard
+                  variant="sticker"
+                  className={`border px-3 py-2 ${
+                    chargingBy === 'p1'
+                      ? 'border-neon-cyan/40 shadow-[0_0_16px_rgba(0,240,255,0.12)]'
+                      : 'border-neon-magenta/40 shadow-[0_0_16px_rgba(255,0,229,0.12)]'
+                  }`}>
+                  <div className="mb-1 flex justify-between font-display text-[10px] tracking-wide text-gray-300">
+                    <span>CHARGE</span>
+                    <span>
+                      {Math.round(
+                        (chargingBy === 'p1' ? p1Charge01 : p2Charge01) * 100
+                      )}
+                      %
+                    </span>
+                  </div>
+                  <ProgressBar
+                    progress={
+                      (chargingBy === 'p1' ? p1Charge01 : p2Charge01) * 100
+                    }
+                    color={
+                      chargingBy === 'p1' ? 'bg-neon-cyan' : 'bg-neon-magenta'
+                    }
+                    height="h-2.5"
+                    variant="arcade"
+                    reduceMotion={reduceMotion}
+                  />
                 </GlassCard>
               </motion.div>
             ) : null}
@@ -1456,7 +1609,7 @@ export function GameScreen({
               variant="sticker"
               interactive
               className="flex min-h-[44px] min-w-[44px] items-center justify-center p-2"
-              onClick={() => moveActivePlayer(-1.8)}
+              onClick={() => moveP1(-1.8)}
               aria-label="Move backward">
               <MoveLeftIcon size={18} />
             </GlassCard>
@@ -1464,7 +1617,7 @@ export function GameScreen({
               variant="sticker"
               interactive
               className="flex min-h-[44px] min-w-[44px] items-center justify-center p-2"
-              onClick={() => moveActivePlayer(1.8)}
+              onClick={() => moveP1(1.8)}
               aria-label="Move forward">
               <MoveRightIcon size={18} />
             </GlassCard>
@@ -1472,7 +1625,7 @@ export function GameScreen({
               variant="sticker"
               interactive
               className="flex min-h-[44px] min-w-[44px] items-center justify-center p-2"
-              onClick={jumpActivePlayer}
+              onClick={jumpP1}
               aria-label="Jump">
               <ArrowUpIcon size={18} />
             </GlassCard>
@@ -1480,7 +1633,7 @@ export function GameScreen({
               variant="sticker"
               interactive
               className="flex min-h-[44px] min-w-[44px] items-center justify-center p-2"
-              onClick={cycleDownStance}
+              onClick={cycleP1Stance}
               aria-label="Crouch or prone">
               <ArrowDownIcon size={18} />
             </GlassCard>
@@ -1509,11 +1662,6 @@ export function GameScreen({
                 }}
                 className="pointer-events-auto mx-auto flex w-full max-w-2xl flex-col items-center gap-2 px-4">
                 <div className="w-full space-y-1">
-                  {!canAim ? (
-                    <p className="text-center font-display text-[10px] uppercase tracking-wide text-gray-500">
-                      Weapons apply on your next turn
-                    </p>
-                  ) : null}
                   <div className="flex justify-center">
                     <GlassCard
                       variant="sticker"
@@ -1643,27 +1791,6 @@ export function GameScreen({
                         }}
                         className="w-full"
                       />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-400 font-display block mb-1">
-                        Turn timer (seconds)
-                      </label>
-                      <input
-                        type="range"
-                        min={5}
-                        max={10}
-                        step={1}
-                        value={turnTimerConfig.durationSec}
-                        onChange={(e) =>
-                          setTurnTimerConfig({
-                            durationSec: Number(e.target.value)
-                          })
-                        }
-                        className="w-full"
-                      />
-                      <p className="mt-1 text-[11px] text-gray-500 font-display">
-                        {turnTimerConfig.durationSec}s (timeout: skip turn)
-                      </p>
                     </div>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input

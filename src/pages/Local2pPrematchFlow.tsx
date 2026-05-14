@@ -76,7 +76,7 @@ export function Local2pPrematchFlow({
                   Local 2 players
                 </SectionHeading>
                 <p className="text-xs text-gray-400 font-display mt-1">
-                  One device — pass between turns. Full catalog for this mode.
+                  One keyboard — real-time duel. Full catalog for this mode.
                 </p>
               </div>
             </div>
