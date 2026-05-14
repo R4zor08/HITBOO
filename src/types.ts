@@ -96,6 +96,11 @@ export interface MapDefinition {
    * Omit to use engine default; tune per map art so hits match the painted floor.
    */
   groundYPercent?: number;
+  /**
+   * Added to `groundYPercent` for character foot anchor (same plane as physics by default).
+   * Negative nudges feet slightly above the collision line if art needs it.
+   */
+  characterFeetYOffsetFromGroundPercent?: number;
 }
 
 export interface TurnTimerConfig {

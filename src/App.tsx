@@ -181,6 +181,14 @@ export function App() {
               }
               onMainMenu={exitToMenu}
               onPlayAgain={handlePlayAgain}
+              onChangeMap={() => {
+                if (gameMode === 'local2p') {
+                  setCurrentScreen('map_select_local');
+                } else {
+                  setCurrentScreen('map_select_online');
+                }
+              }}
+              onChangeMode={() => setCurrentScreen('menu')}
             />
           )}
         </AnimatePresence>

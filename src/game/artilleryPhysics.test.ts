@@ -6,6 +6,7 @@ import {
   P1_POS,
   P2_POS,
   PROJECTILE_START_Y_OFFSET,
+  characterFeetYPercent,
   computeHitDamage,
   computeHitDamageWithZone,
   findBestAim,
@@ -15,6 +16,14 @@ import {
   simulateShotUntilEnd
 } from './artilleryPhysics';
 import { slingshotAimFromPointer } from './aimFromDrag';
+
+describe('characterFeetYPercent', () => {
+  it('nudges feet from physics ground by signed percent offset', () => {
+    expect(characterFeetYPercent(90, 0)).toBe(90);
+    expect(characterFeetYPercent(90, 1)).toBe(91);
+    expect(characterFeetYPercent(88, -0.5)).toBe(87.5);
+  });
+});
 
 describe('initialVelocity', () => {
   it('faces right with positive horizontal component for shallow angles', () => {
@@ -96,6 +105,39 @@ describe('simulateShotUntilEnd', () => {
       targetY: P2_POS.y
     });
     expect(r.outcome).toBe('hit');
+  });
+});
+
+describe('sampleTrajectoryWithTerminal groundY', () => {
+  it('uses custom ground plane when groundY is lower than default', () => {
+    const low = 82;
+    const high = GROUND_Y;
+    const a = sampleTrajectoryWithTerminal({
+      power: 60,
+      angleDeg: 48,
+      shooterFacingRight: true,
+      velocityScale: 1,
+      windSpeed: 0,
+      windDirection: 'right',
+      startX: P1_POS.x,
+      startY: P1_POS.y + PROJECTILE_START_Y_OFFSET,
+      groundY: low
+    });
+    const b = sampleTrajectoryWithTerminal({
+      power: 60,
+      angleDeg: 48,
+      shooterFacingRight: true,
+      velocityScale: 1,
+      windSpeed: 0,
+      windDirection: 'right',
+      startX: P1_POS.x,
+      startY: P1_POS.y + PROJECTILE_START_Y_OFFSET,
+      groundY: high
+    });
+    expect(a.terminal?.y ?? 0).toBeLessThanOrEqual(low + 0.01);
+    expect(b.terminal?.y ?? 0).toBeLessThanOrEqual(high + 0.01);
+    expect(a.points.length).toBeGreaterThan(2);
+    expect(b.points.length).toBeGreaterThan(2);
   });
 });
 

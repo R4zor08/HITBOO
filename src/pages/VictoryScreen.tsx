@@ -5,7 +5,9 @@ import {
   StarIcon,
   CoinsIcon,
   ArrowRightIcon,
-  RotateCcwIcon
+  RotateCcwIcon,
+  MapIcon,
+  LayoutGridIcon
 } from 'lucide-react';
 import { NeonButton } from '../components/ui/NeonButton';
 import { GlassCard } from '../components/ui/GlassCard';
@@ -16,6 +18,7 @@ import { StickerAvatar } from '../components/game/StickerAvatar';
 import { useHitBowProgress } from '../context/HitBowProgressContext';
 import type { CharacterId } from '../game/charactersCatalog';
 import type { MatchResult, MatchRewardResult } from '../game/matchResult';
+import { playUiTick } from '../game/gameAudio';
 
 interface VictoryScreenProps {
   winner: 'player' | 'enemy';
@@ -24,6 +27,8 @@ interface VictoryScreenProps {
   local2pCharacterIds?: { p1: CharacterId; p2: CharacterId };
   onMainMenu: () => void;
   onPlayAgain: () => void;
+  onChangeMap?: () => void;
+  onChangeMode?: () => void;
 }
 
 const XP_PER_RANK = 600;
@@ -38,9 +43,13 @@ export function VictoryScreen({
   matchResult,
   local2pCharacterIds,
   onMainMenu,
-  onPlayAgain
+  onPlayAgain,
+  onChangeMap,
+  onChangeMode
 }: VictoryScreenProps) {
   const progress = useHitBowProgress();
+  const sfxMuted =
+    progress.settings.masterVolume * progress.settings.sfxVolume < 0.001;
   const isLocal2p = matchResult?.mode === 'local2p';
   const isWin = winner === 'player';
   const playerWon = isLocal2p ? winner === 'player' : isWin;
@@ -75,6 +84,10 @@ export function VictoryScreen({
       },
     [matchResult, winner, progress.playerName, progress.playerRank]
   );
+
+  useEffect(() => {
+    playUiTick(sfxMuted);
+  }, []);
 
   useEffect(() => {
     if (rewardedRef.current) return;
@@ -247,6 +260,51 @@ export function VictoryScreen({
             </div>
 
             <div className="space-y-6">
+              {safeResult.extended && (
+                <GlassCard
+                  variant="default"
+                  className="border border-white/10 bg-dark-darker/50 p-4 shadow-glass backdrop-blur-md">
+                  <p className="font-display text-xs font-black uppercase tracking-widest text-neon-cyan/90 mb-3">
+                    Match summary
+                  </p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs font-display text-gray-200 sm:grid-cols-3">
+                    <span className="text-gray-500">Duration</span>
+                    <span className="col-span-1 sm:col-span-2 text-right sm:text-left">
+                      {safeResult.extended.durationSec}s
+                    </span>
+                    <span className="text-gray-500">Map</span>
+                    <span className="col-span-1 sm:col-span-2 truncate text-right sm:text-left">
+                      {safeResult.extended.mapName}
+                    </span>
+                    <span className="text-gray-500">Mode</span>
+                    <span className="col-span-1 sm:col-span-2 text-right sm:text-left">
+                      {safeResult.extended.modeLabel}
+                    </span>
+                    <span className="text-gray-500">Final HP</span>
+                    <span className="col-span-1 sm:col-span-2 text-right sm:text-left">
+                      {safeResult.extended.playerFinalHp} / {safeResult.extended.enemyFinalHp}
+                    </span>
+                    <span className="text-gray-500">Best hit</span>
+                    <span className="col-span-1 sm:col-span-2 text-right sm:text-left">
+                      P1 {safeResult.extended.biggestHitPlayer} · P2 {safeResult.extended.biggestHitEnemy}
+                    </span>
+                    <span className="text-gray-500">Best streak</span>
+                    <span className="col-span-1 sm:col-span-2 text-right sm:text-left">
+                      {safeResult.extended.maxStreakPlayer} / {safeResult.extended.maxStreakEnemy}
+                    </span>
+                    {safeResult.extended.comeback ? (
+                      <>
+                        <span className="text-gray-500">Comeback</span>
+                        <span className="col-span-1 sm:col-span-2 text-neon-yellow text-right sm:text-left">
+                          {safeResult.extended.comeback === 'player'
+                            ? safeResult.player.name
+                            : safeResult.enemy.name}
+                        </span>
+                      </>
+                    ) : null}
+                  </div>
+                </GlassCard>
+              )}
               {!isLocal2p && (
               <div>
                 <div className="flex justify-between text-sm font-display mb-2">
@@ -308,6 +366,31 @@ export function VictoryScreen({
             <RotateCcwIcon /> PLAY AGAIN
           </NeonButton>
         </motion.div>
+
+        {(onChangeMap || onChangeMode) && (
+          <motion.div
+            initial={{ y: 24, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 1.15, duration: 0.45 }}
+            className="mt-4 flex w-full max-w-2xl flex-col gap-3 sm:flex-row sm:justify-center">
+            {onChangeMap ? (
+              <NeonButton
+                variant="secondary"
+                className="flex flex-1 items-center justify-center gap-2 sm:max-w-xs"
+                onClick={onChangeMap}>
+                <MapIcon size={18} /> CHANGE MAP
+              </NeonButton>
+            ) : null}
+            {onChangeMode ? (
+              <NeonButton
+                variant="secondary"
+                className="flex flex-1 items-center justify-center gap-2 sm:max-w-xs"
+                onClick={onChangeMode}>
+                <LayoutGridIcon size={18} /> CHANGE MODE
+              </NeonButton>
+            ) : null}
+          </motion.div>
+        )}
       </div>
       </ScreenFrame>
     </motion.div>

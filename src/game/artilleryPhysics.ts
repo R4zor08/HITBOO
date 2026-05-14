@@ -48,14 +48,23 @@ export function initialVelocity(
 
 export function simulateStep(
   body: PhysicsBody,
-  windAcceleration: number
+  windAcceleration: number,
+  gravityScale = 1
 ): PhysicsBody {
   return {
     x: body.x + body.vx,
     y: body.y + body.vy,
     vx: body.vx + windAcceleration,
-    vy: body.vy + GRAVITY_PER_FRAME
+    vy: body.vy + GRAVITY_PER_FRAME * gravityScale
   };
+}
+
+/** Character sticker foot line in arena percent Y (matches physics floor + optional map tweak). */
+export function characterFeetYPercent(
+  groundYPercent: number,
+  feetOffsetPercent = 0
+): number {
+  return groundYPercent + feetOffsetPercent;
 }
 
 export interface ShotParams {

@@ -11,6 +11,8 @@ export type AimTrajectoryOverlayProps = {
   stroke: string;
   reduceMotion: boolean;
   visible: boolean;
+  /** Practice gets a bolder preview; ranked stays subtle; local2p matches charger aid only. */
+  trajectoryStrength?: 'ranked' | 'practice' | 'local2p';
 };
 
 export function AimTrajectoryOverlay({
@@ -22,7 +24,8 @@ export function AimTrajectoryOverlay({
   facingRight,
   stroke,
   reduceMotion,
-  visible
+  visible,
+  trajectoryStrength = 'ranked'
 }: AimTrajectoryOverlayProps) {
   if (!visible || points.length < 2) return null;
   const poly = points.map((p) => `${p.x},${p.y}`).join(' ');
@@ -33,6 +36,11 @@ export function AimTrajectoryOverlay({
   const ax1 = startX + Math.cos(rad) * arrLen * dir;
   const ay1 = startY - Math.sin(rad) * arrLen;
 
+  const isPractice = trajectoryStrength === 'practice';
+  const strokeW = isPractice ? 0.72 : 0.5;
+  const lineOpacity = isPractice ? 1 : 0.95;
+  const glowStd = isPractice ? 0.55 : 0.42;
+
   return (
     <svg
       className="pointer-events-none absolute inset-0 z-[12] h-full w-full"
@@ -40,7 +48,7 @@ export function AimTrajectoryOverlay({
       preserveAspectRatio="none">
       <defs>
         <filter id="hitbowTrajGlow" x="-40%" y="-40%" width="180%" height="180%">
-          <feGaussianBlur stdDeviation="0.42" result="blur" />
+          <feGaussianBlur stdDeviation={glowStd} result="blur" />
           <feMerge>
             <feMergeNode in="blur" />
             <feMergeNode in="SourceGraphic" />
@@ -54,9 +62,9 @@ export function AimTrajectoryOverlay({
         x2={ax1}
         y2={ay1}
         stroke={stroke}
-        strokeWidth="0.5"
+        strokeWidth={strokeW * 0.9}
         strokeLinecap="round"
-        opacity={0.92}
+        opacity={lineOpacity}
         filter="url(#hitbowTrajGlow)"
       />
 
@@ -64,20 +72,20 @@ export function AimTrajectoryOverlay({
         points={poly}
         fill="none"
         stroke={stroke}
-        strokeWidth="0.5"
-        strokeDasharray="1.1 0.95"
+        strokeWidth={strokeW}
+        strokeDasharray={isPractice ? '1.4 0.75' : '1.1 0.95'}
         strokeLinecap="round"
         strokeLinejoin="round"
-        opacity={0.95}
+        opacity={lineOpacity}
         filter="url(#hitbowTrajGlow)"
       />
 
       <circle
         cx={term.x}
         cy={term.y}
-        r={1.05}
+        r={isPractice ? 1.25 : 1.05}
         fill={stroke}
-        opacity={0.9}
+        opacity={lineOpacity}
         filter="url(#hitbowTrajGlow)"
       />
 

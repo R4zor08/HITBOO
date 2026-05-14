@@ -55,8 +55,8 @@ export function CharacterSticker({
   const chargeBoost = isCharging && !reduceMotion ? 1.35 : 1;
   const glowFilter =
     side === 'player'
-      ? `drop-shadow(0 4px 0 ${accentHex}55) drop-shadow(0 0 ${10 * chargeBoost}px ${glowTint})`
-      : `drop-shadow(0 4px 0 ${ENEMY_GLOW_HEX}88) drop-shadow(0 0 ${
+      ? `drop-shadow(0 0 1.5px rgba(255,255,255,0.45)) drop-shadow(0 4px 0 ${accentHex}55) drop-shadow(0 0 ${10 * chargeBoost}px ${glowTint})`
+      : `drop-shadow(0 0 1.5px rgba(255,255,255,0.35)) drop-shadow(0 4px 0 ${ENEMY_GLOW_HEX}88) drop-shadow(0 0 ${
           10 * chargeBoost
         }px ${ENEMY_GLOW_HEX})`;
 
@@ -100,6 +100,12 @@ export function CharacterSticker({
         duration: isDead ? 0.5 : 0.2,
         repeat: 0
       }}>
+      {!isDead ? (
+        <div
+          className="pointer-events-none absolute left-1/2 top-full z-0 h-3 w-10 -translate-x-1/2 -translate-y-[120%] rounded-full bg-black/35 blur-sm"
+          aria-hidden
+        />
+      ) : null}
       <motion.div
         className="flex h-full w-full flex-col items-center justify-end"
         style={{ transformOrigin: '50% 100%', scale: stanceScale }}

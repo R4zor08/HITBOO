@@ -1,4 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState
+} from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   SettingsIcon,
@@ -39,6 +46,7 @@ import {
   P2_POS,
   PROJECTILE_START_Y_OFFSET,
   applyAimError,
+  characterFeetYPercent,
   findBestAim,
   sampleTrajectoryWithTerminal
 } from '../game/artilleryPhysics';
@@ -47,14 +55,73 @@ import {
   pointerNearAnchor,
   slingshotAimFromPointer
 } from '../game/aimFromDrag';
-import { getEnemyWeapon, WEAPON_PRESETS } from '../game/weapons';
-import { playBlip, playHit, playMiss } from '../game/gameAudio';
+import {
+  getWeaponById,
+  pickEnemyWeaponId,
+  WEAPON_PRESETS
+} from '../game/weapons';
+import {
+  playBlip,
+  playHitImpact,
+  playMissThud,
+  playKillSting,
+  playProjectileLaunch,
+  playSfx
+} from '../game/gameAudio';
+import { duckGameMusic } from '../game/gameMusic';
 import type { MatchResult } from '../game/matchResult';
+import type { MatchExtendedStats } from '../game/matchStatsTypes';
+import { logMatchDebug } from '../game/debugMatch';
+import { getModeGameplayConfig, resolveAiCadenceMs, type GameModeKey } from '../config/modeConfig';
+import {
+  DamageFloaters,
+  type DamageFloater
+} from '../components/hud/DamageFloaters';
 import { STORAGE } from '../game/storageKeys';
 import { DEFAULT_MAP_ID, getMapById } from '../game/maps';
+import {
+  ActionStatusPanel,
+  type ActionStatus
+} from '../components/hud/ActionStatusPanel';
+import { getSkillBehavior } from '../config/skillBehaviorConfig';
 
 if (!WEAPON_PRESETS.length) {
   throw new Error('WEAPON_PRESETS must not be empty');
+}
+
+const LOCAL2P_HOTBAR = WEAPON_PRESETS.slice(0, 5);
+
+function stanceToActionStatus(stance: PlayerStance): ActionStatus {
+  if (stance === 'jumping') return 'Jumping';
+  if (stance === 'crouching') return 'Crouching';
+  if (stance === 'prone') return 'Prone';
+  return 'Standing';
+}
+
+type MatchFireState = {
+  active: FirePayload | null;
+  queue: FirePayload[];
+};
+
+type MatchFireAction =
+  | { type: 'enqueue'; payload: FirePayload }
+  | { type: 'complete' }
+  | { type: 'clear' };
+
+function matchFireReducer(
+  state: MatchFireState,
+  action: MatchFireAction
+): MatchFireState {
+  if (action.type === 'clear') {
+    return { active: null, queue: [] };
+  }
+  if (action.type === 'enqueue') {
+    if (state.active === null)
+      return { active: action.payload, queue: state.queue };
+    return { active: state.active, queue: [...state.queue, action.payload] };
+  }
+  const [next, ...rest] = state.queue;
+  return { active: next ?? null, queue: rest };
 }
 
 export type GameMode = 'standard' | 'practice' | 'local2p';
@@ -82,6 +149,14 @@ export function GameScreen({
     throw new Error('GameScreen: local2p mode requires local2pLoadout');
   }
   const practice = gameMode === 'practice';
+  const modeKey: GameModeKey =
+    gameMode === 'practice' ? 'practice' : gameMode === 'local2p' ? 'local2p' : 'standard';
+  const modeGameplay = useMemo(
+    () => getModeGameplayConfig(modeKey, progress.settings.difficulty),
+    [modeKey, progress.settings.difficulty]
+  );
+  const modeGameplayRef = useRef(modeGameplay);
+  modeGameplayRef.current = modeGameplay;
   const [playerHp, setPlayerHp] = useState(100);
   const [enemyHp, setEnemyHp] = useState(100);
   const [wind, setWind] = useState({
@@ -106,28 +181,28 @@ export function GameScreen({
     setSelectedWeaponId(progress.equippedWeaponId);
   }, [progress.equippedWeaponId, local2p]);
 
-  const p1LoadoutWeapon = useMemo((): Weapon | null => {
-    if (!local2pLoadout) return null;
-    return (
-      WEAPON_PRESETS.find((x) => x.id === local2pLoadout.p1WeaponId) ??
-      WEAPON_PRESETS[0] ??
-      null
-    );
-  }, [local2pLoadout]);
+  const firstWeaponId = WEAPON_PRESETS[0]!.id;
+  const [p1RuntimeWeaponId, setP1RuntimeWeaponId] = useState(
+    () => local2pLoadout?.p1WeaponId ?? firstWeaponId
+  );
+  const [p2RuntimeWeaponId, setP2RuntimeWeaponId] = useState(
+    () => local2pLoadout?.p2WeaponId ?? firstWeaponId
+  );
 
-  const p2LoadoutWeapon = useMemo((): Weapon | null => {
-    if (!local2pLoadout) return null;
-    return (
-      WEAPON_PRESETS.find((x) => x.id === local2pLoadout.p2WeaponId) ??
-      WEAPON_PRESETS[0] ??
-      null
-    );
-  }, [local2pLoadout]);
+  useEffect(() => {
+    if (!local2pLoadout) return;
+    setP1RuntimeWeaponId(local2pLoadout.p1WeaponId);
+    setP2RuntimeWeaponId(local2pLoadout.p2WeaponId);
+  }, [local2pLoadout?.p1WeaponId, local2pLoadout?.p2WeaponId]);
 
-  const enemyWeapon = useMemo(() => {
-    if (local2p && p2LoadoutWeapon) return p2LoadoutWeapon;
-    return getEnemyWeapon(progress.settings.difficulty);
-  }, [local2p, p2LoadoutWeapon, progress.settings.difficulty]);
+  const p1RuntimeWeapon = useMemo(
+    () => getWeaponById(p1RuntimeWeaponId),
+    [p1RuntimeWeaponId]
+  );
+  const p2RuntimeWeapon = useMemo(
+    () => getWeaponById(p2RuntimeWeaponId),
+    [p2RuntimeWeaponId]
+  );
 
   const enemyAimError = useMemo(() => {
     switch (progress.settings.difficulty) {
@@ -193,13 +268,28 @@ export function GameScreen({
   const playerHpRef = useRef(playerHp);
   const enemyHpRef = useRef(enemyHp);
   const local2pRef = useRef(local2p);
+  const practiceRef = useRef(practice);
   const settingsOpenRef = useRef(settingsOpen);
   const matchHelpOpenRef = useRef(matchHelpOpen);
+  const gameplayPaused = settingsOpen || matchHelpOpen;
+  const gameplayPausedRef = useRef(gameplayPaused);
+  const matchEnded = playerHp <= 0 || enemyHp <= 0;
+  const simPaused = gameplayPaused || matchEnded;
+  type MatchRuntimePhase = 'playing' | 'paused_overlay' | 'game_over';
+  const matchRuntimePhase: MatchRuntimePhase = matchEnded
+    ? 'game_over'
+    : gameplayPaused
+      ? 'paused_overlay'
+      : 'playing';
+  const matchRuntimePhaseRef = useRef(matchRuntimePhase);
+  matchRuntimePhaseRef.current = matchRuntimePhase;
   playerHpRef.current = playerHp;
   enemyHpRef.current = enemyHp;
   local2pRef.current = local2p;
+  practiceRef.current = practice;
   settingsOpenRef.current = settingsOpen;
   matchHelpOpenRef.current = matchHelpOpen;
+  gameplayPausedRef.current = gameplayPaused;
   const [reduceMotion, setReduceMotion] = useState(
     progress.settings.reduceMotion
   );
@@ -215,7 +305,74 @@ export function GameScreen({
   const matchStatsRef = useRef(matchStats);
   matchStatsRef.current = matchStats;
 
-  const [triggerFire, setTriggerFire] = useState<FirePayload | null>(null);
+  const [fireState, fireDispatch] = useReducer(matchFireReducer, {
+    active: null,
+    queue: [] as FirePayload[]
+  });
+  const triggerFire = fireState.active;
+  const [p1SkillCdUntil, setP1SkillCdUntil] = useState<Record<string, number>>(
+    {}
+  );
+  const [p2SkillCdUntil, setP2SkillCdUntil] = useState<Record<string, number>>(
+    {}
+  );
+  const [enemySkillCdUntil, setEnemySkillCdUntil] = useState<
+    Record<string, number>
+  >({});
+  const enemySkillCdRef = useRef<Record<string, number>>({});
+  useEffect(() => {
+    enemySkillCdRef.current = enemySkillCdUntil;
+  }, [enemySkillCdUntil]);
+
+  const healUsesRef = useRef<{
+    p1: Record<string, number>;
+    p2: Record<string, number>;
+  }>({ p1: {}, p2: {} });
+
+  const incomingProjRef = useRef(0);
+  const [incomingProjectiles, setIncomingProjectiles] = useState(0);
+  const [hudTick, setHudTick] = useState(0);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setIncomingProjectiles(incomingProjRef.current);
+      setHudTick((t) => t + 1);
+    }, 250);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const onProjectileCount = useCallback((n: number) => {
+    incomingProjRef.current = n;
+  }, []);
+
+  const weaponSwapLockUntilRef = useRef(0);
+  const [matchCallout, setMatchCallout] = useState<string | null>(null);
+  const calloutClearRef = useRef<number | null>(null);
+  const [lastExchangeLine, setLastExchangeLine] = useState<string | null>(null);
+  const nearMissCooldownRef = useRef(0);
+
+  const bumpCallout = useCallback((text: string) => {
+    setMatchCallout(text);
+    if (calloutClearRef.current != null) {
+      window.clearTimeout(calloutClearRef.current);
+    }
+    calloutClearRef.current = window.setTimeout(() => {
+      setMatchCallout(null);
+      calloutClearRef.current = null;
+    }, 2200);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (calloutClearRef.current != null) {
+        window.clearTimeout(calloutClearRef.current);
+      }
+    };
+  }, []);
+
+  const queueVolley = useCallback((payload: FirePayload) => {
+    fireDispatch({ type: 'enqueue', payload });
+  }, []);
   const [arenaReady, setArenaReady] = useState(false);
   const [arenaFallbackVisible, setArenaFallbackVisible] = useState(false);
   const enemyName = local2p
@@ -230,6 +387,14 @@ export function GameScreen({
   const canAim = !local2p;
   const activeMap = useMemo(() => getMapById(mapId), [mapId]);
   const groundY = activeMap.groundYPercent ?? GROUND_Y;
+  const characterBaseY = useMemo(
+    () =>
+      characterFeetYPercent(
+        groundY,
+        activeMap.characterFeetYOffsetFromGroundPercent ?? 0
+      ),
+    [groundY, activeMap.characterFeetYOffsetFromGroundPercent]
+  );
   const [p1Move, setP1Move] = useState<PlayerMovementState>({
     x: P1_POS.x,
     yOffset: 0,
@@ -266,10 +431,40 @@ export function GameScreen({
   }, [isAiming]);
 
   const [chargingBy, setChargingBy] = useState<'p1' | 'p2' | null>(null);
+
+  const canSwapWeapon = useCallback(() => {
+    if (performance.now() < weaponSwapLockUntilRef.current) return false;
+    if (chargingBy) return false;
+    if (isAiming && aimPower > 5) return false;
+    return true;
+  }, [chargingBy, isAiming, aimPower]);
+
+  const tryWeaponSwap = useCallback(() => {
+    weaponSwapLockUntilRef.current = Date.now() + 420;
+  }, []);
+
   const [p1Charge01, setP1Charge01] = useState(0);
   const [p2Charge01, setP2Charge01] = useState(0);
   const [playerHitTint, setPlayerHitTint] = useState(false);
   const [enemyHitTint, setEnemyHitTint] = useState(false);
+  const [playerDamageImmuneUntil, setPlayerDamageImmuneUntil] = useState(0);
+  const [enemyDamageImmuneUntil, setEnemyDamageImmuneUntil] = useState(0);
+  const [damageFloaters, setDamageFloaters] = useState<DamageFloater[]>([]);
+  const floaterStackRef = useRef<Map<string, number>>(new Map());
+  const matchStartMsRef = useRef<number | null>(null);
+  const windSeedRef = useRef(Math.floor(Math.random() * 1e9));
+  const playerDeadRef = useRef(false);
+  const enemyDeadRef = useRef(false);
+  const combatMetaRef = useRef({
+    biggestHitPlayer: 0,
+    biggestHitEnemy: 0,
+    maxStreakPlayer: 0,
+    maxStreakEnemy: 0,
+    streakPlayer: 0,
+    streakEnemy: 0,
+    minHpPlayer: 100,
+    minHpEnemy: 100
+  });
   const keysHeldRef = useRef({
     p1Left: false,
     p1Right: false,
@@ -282,8 +477,34 @@ export function GameScreen({
   });
 
   useEffect(() => {
-    setAimSensitivity(progress.settings.defaultAimSensitivity);
-  }, [progress.settings.defaultAimSensitivity]);
+    matchStartMsRef.current = Date.now();
+    windSeedRef.current = Math.floor(Math.random() * 1e9);
+    playerDeadRef.current = false;
+    enemyDeadRef.current = false;
+    combatMetaRef.current = {
+      biggestHitPlayer: 0,
+      biggestHitEnemy: 0,
+      maxStreakPlayer: 0,
+      maxStreakEnemy: 0,
+      streakPlayer: 0,
+      streakEnemy: 0,
+      minHpPlayer: 100,
+      minHpEnemy: 100
+    };
+    logMatchDebug('match_start', {
+      mapId,
+      mode: gameMode,
+      windSeed: windSeedRef.current,
+      difficulty: progress.settings.difficulty
+    });
+  }, [mapId, gameMode, progress.settings.difficulty]);
+
+  useEffect(() => {
+    const m = combatMetaRef.current;
+    m.minHpPlayer = Math.min(m.minHpPlayer, playerHp);
+    m.minHpEnemy = Math.min(m.minHpEnemy, enemyHp);
+  }, [playerHp, enemyHp]);
+
 
   useEffect(() => {
     setReduceMotion(progress.settings.reduceMotion);
@@ -305,23 +526,29 @@ export function GameScreen({
   windRef.current = wind;
 
   const trajectoryPreview = useMemo(() => {
-    if (local2p && p1LoadoutWeapon && p2LoadoutWeapon && chargingBy) {
+    const windSimForWeapon = (weaponId: string) =>
+      wind.speed *
+      modeGameplay.windEffectScale *
+      getSkillBehavior(weaponId).windEffectOnProjectile;
+
+    if (local2p && chargingBy) {
       const shooterP1 = chargingBy === 'p1';
-      const w = shooterP1 ? p1LoadoutWeapon : p2LoadoutWeapon;
+      const w = shooterP1 ? p1RuntimeWeapon : p2RuntimeWeapon;
       const ch = shooterP1 ? p1Charge01 : p2Charge01;
+      const wSim = windSimForWeapon(w.id);
       const sol = findBestAim({
         shooterFacingRight: shooterP1,
         velocityScale: w.velocityScale,
-        windSpeed: wind.speed,
+        windSpeed: wSim,
         windDirection: wind.direction,
         startX: shooterP1 ? p1Move.x : p2Move.x,
         startY:
-          (shooterP1 ? P1_POS.y + p1Move.yOffset : P2_POS.y + p2Move.yOffset) +
+          (shooterP1 ? characterBaseY + p1Move.yOffset : characterBaseY + p2Move.yOffset) +
           PROJECTILE_START_Y_OFFSET,
         targetX: shooterP1 ? p2Move.x : p1Move.x,
         targetY: shooterP1
-          ? P2_POS.y + p2Move.yOffset
-          : P1_POS.y + p1Move.yOffset,
+          ? characterBaseY + p2Move.yOffset
+          : characterBaseY + p1Move.yOffset,
         groundY
       });
       const pMin = 25;
@@ -334,11 +561,11 @@ export function GameScreen({
         angleDeg: sol.angleDeg,
         shooterFacingRight: shooterP1,
         velocityScale: w.velocityScale,
-        windSpeed: wind.speed,
+        windSpeed: wSim,
         windDirection: wind.direction,
         startX: shooterP1 ? p1Move.x : p2Move.x,
         startY:
-          (shooterP1 ? P1_POS.y + p1Move.yOffset : P2_POS.y + p2Move.yOffset) +
+          (shooterP1 ? characterBaseY + p1Move.yOffset : characterBaseY + p2Move.yOffset) +
           PROJECTILE_START_Y_OFFSET,
         groundY
       });
@@ -358,13 +585,14 @@ export function GameScreen({
       };
     }
     const startX = p1Move.x;
-    const startY = P1_POS.y + p1Move.yOffset + PROJECTILE_START_Y_OFFSET;
+    const startY = characterBaseY + p1Move.yOffset + PROJECTILE_START_Y_OFFSET;
+    const wSim = windSimForWeapon(selectedWeapon.id);
     const { points, terminal } = sampleTrajectoryWithTerminal({
       power: aimPower,
       angleDeg: aimAngle,
       shooterFacingRight: true,
       velocityScale: selectedWeapon.velocityScale,
-      windSpeed: wind.speed,
+      windSpeed: wSim,
       windDirection: wind.direction,
       startX,
       startY,
@@ -378,8 +606,8 @@ export function GameScreen({
     };
   }, [
     local2p,
-    p1LoadoutWeapon,
-    p2LoadoutWeapon,
+    p1RuntimeWeapon,
+    p2RuntimeWeapon,
     chargingBy,
     p1Charge01,
     p2Charge01,
@@ -393,7 +621,8 @@ export function GameScreen({
     isAiming,
     aimPower,
     aimAngle,
-    selectedWeapon.velocityScale
+    selectedWeapon,
+    modeGameplay.windEffectScale
   ]);
 
   const previewPoints = trajectoryPreview.points;
@@ -426,12 +655,12 @@ export function GameScreen({
     if (local2p && chargingBy === 'p2') {
       return {
         startX: p2Move.x,
-        startY: P2_POS.y + p2Move.yOffset + PROJECTILE_START_Y_OFFSET
+        startY: characterBaseY + p2Move.yOffset + PROJECTILE_START_Y_OFFSET
       };
     }
     return {
       startX: p1Move.x,
-      startY: P1_POS.y + p1Move.yOffset + PROJECTILE_START_Y_OFFSET
+      startY: characterBaseY + p1Move.yOffset + PROJECTILE_START_Y_OFFSET
     };
   }, [
     local2p,
@@ -530,6 +759,19 @@ export function GameScreen({
     };
   }, [reduceMotion, wind.speed, wind.direction]);
 
+  const windStrengthTier = useMemo(() => {
+    const s = wind.speed;
+    if (s <= 6) return 'Light' as const;
+    if (s <= 12) return 'Medium' as const;
+    return 'Strong' as const;
+  }, [wind.speed]);
+
+  const windArrowFontRem = useMemo(() => {
+    const base = 1.05;
+    const extra = Math.min(0.85, wind.speed * 0.04);
+    return base + extra;
+  }, [wind.speed]);
+
   useEffect(() => {
     const onFs = () =>
       setFullscreen(!!document.fullscreenElement);
@@ -553,6 +795,33 @@ export function GameScreen({
   const buildMatchResult = useCallback(
     (winner: 'player' | 'enemy'): MatchResult => {
       const s = matchStatsRef.current;
+      const meta = combatMetaRef.current;
+      const start = matchStartMsRef.current ?? Date.now();
+      const durationSec = Math.max(0, Math.round((Date.now() - start) / 1000));
+      const modeLabel =
+        gameMode === 'practice'
+          ? 'Practice'
+          : gameMode === 'local2p'
+            ? 'Local 2P'
+            : 'Ranked';
+      const extended: MatchExtendedStats = {
+        durationSec,
+        mapId,
+        mapName: activeMap.name,
+        modeLabel,
+        playerFinalHp: playerHpRef.current,
+        enemyFinalHp: enemyHpRef.current,
+        biggestHitPlayer: meta.biggestHitPlayer,
+        biggestHitEnemy: meta.biggestHitEnemy,
+        maxStreakPlayer: meta.maxStreakPlayer,
+        maxStreakEnemy: meta.maxStreakEnemy,
+        comeback:
+          winner === 'player' && meta.minHpPlayer < 24
+            ? 'player'
+            : winner === 'enemy' && meta.minHpEnemy < 24
+              ? 'enemy'
+              : null
+      };
       const playerAccuracy =
         s.playerShots > 0 ? (s.playerHits / s.playerShots) * 100 : 0;
       const enemyAccuracy =
@@ -577,7 +846,8 @@ export function GameScreen({
             shots: s.enemyShots,
             hits: s.enemyHits,
             accuracy: Number(enemyAccuracy.toFixed(1))
-          }
+          },
+          extended
         };
       }
       return {
@@ -599,14 +869,17 @@ export function GameScreen({
           shots: s.enemyShots,
           hits: s.enemyHits,
           accuracy: Number(enemyAccuracy.toFixed(1))
-        }
+        },
+        extended
       };
     },
     [
+      activeMap.name,
       enemyName,
       enemyRank,
       gameMode,
       local2p,
+      mapId,
       progress.playerName,
       progress.playerRank
     ]
@@ -623,50 +896,95 @@ export function GameScreen({
       windMin = 5;
       windSpan = 18;
     }
+    const mc = modeGameplay;
+    const spanScaled = Math.max(1, Math.round(windSpan * mc.windSpanScale));
+    const minScaled = Math.max(
+      0,
+      Math.round(windMin * mc.windSpanScale + mc.windMinBonus)
+    );
     const newWind = {
       speed: Math.max(
         0,
-        Math.floor(Math.random() * windSpan) + windMin + (activeMap.windBias ?? 0)
+        Math.floor(Math.random() * spanScaled) +
+          minScaled +
+          (activeMap.windBias ?? 0)
       ),
       direction: (Math.random() > 0.5 ? 'right' : 'left') as 'left' | 'right'
     };
     windRef.current = newWind;
     setWind(newWind);
-  }, [progress.settings.difficulty, activeMap.windBias]);
+  }, [progress.settings.difficulty, activeMap.windBias, modeGameplay]);
 
   const scheduleEnemyShot = useCallback(() => {
+    if (gameplayPausedRef.current) return;
+    if (matchRuntimePhaseRef.current !== 'playing') return;
     if (enemyHp <= 0 || playerHp <= 0) return;
     const w = windRef.current;
+    const now = performance.now();
+    const tier = progress.settings.difficulty;
+    const wid = pickEnemyWeaponId(tier, enemySkillCdRef.current, now);
+    const enemyW = getWeaponById(wid);
+    const sb = getSkillBehavior(wid);
+    const windSim =
+      w.speed * modeGameplay.windEffectScale * sb.windEffectOnProjectile;
     const sol = findBestAim({
       shooterFacingRight: false,
-      velocityScale: enemyWeapon.velocityScale,
-      windSpeed: w.speed,
+      velocityScale: enemyW.velocityScale * sb.velocityScaleMultiplier,
+      windSpeed: windSim,
       windDirection: w.direction,
       startX: p2Move.x,
-      startY: P2_POS.y + p2Move.yOffset + PROJECTILE_START_Y_OFFSET,
+      startY: characterBaseY + p2Move.yOffset + PROJECTILE_START_Y_OFFSET,
       targetX: p1Move.x,
-      targetY: P1_POS.y + p1Move.yOffset,
+      targetY: characterBaseY + p1Move.yOffset,
       groundY
     });
+    const scale = modeGameplay.aiAimErrorScale;
     const err = applyAimError(
       sol.power,
       sol.angleDeg,
-      enemyAimError.power,
-      enemyAimError.angle
+      enemyAimError.power * scale,
+      enemyAimError.angle * scale
     );
-    setTriggerFire({
-      power: err.power,
-      angle: err.angleDeg,
-      timestamp: Date.now(),
-      velocityScale: enemyWeapon.velocityScale,
-      baseDamage: enemyWeapon.damage,
-      projectileStyle: enemyWeapon.projectileStyle,
-      shooterWasPlayer: false
+    const wr = modeGameplay.aiWindReadiness;
+    let angleFire = err.angleDeg;
+    if (wr < 1) {
+      angleFire += (Math.random() - 0.5) * 2 * (1 - wr) * 7;
+    }
+    const windMult =
+      modeGameplay.windEffectScale * sb.windEffectOnProjectile;
+    const dmg = Math.max(
+      1,
+      Math.round(enemyW.damage * sb.perProjectileDamageMultiplier)
+    );
+    const baseTs = Date.now();
+    for (let i = 0; i < sb.projectileCount; i++) {
+      queueVolley({
+        power: err.power,
+        angle: angleFire,
+        timestamp: baseTs + i * 4,
+        velocityScale: enemyW.velocityScale * sb.velocityScaleMultiplier,
+        baseDamage: dmg,
+        projectileStyle: enemyW.projectileStyle,
+        shooterWasPlayer: false,
+        windEffectMultiplier: windMult,
+        gravityScale: sb.gravityScaleMultiplier
+      });
+    }
+    setEnemySkillCdUntil((prev) => ({
+      ...prev,
+      [wid]: now + sb.cooldownMs
+    }));
+    logMatchDebug('ai_weapon_pick', {
+      weaponId: wid,
+      cooldownMs: sb.cooldownMs,
+      projectileCount: sb.projectileCount
     });
-    updateMatchStats((prev) => ({ ...prev, enemyShots: prev.enemyShots + 1 }));
-    playBlip(220, 0.06, audioMuted);
+    updateMatchStats((prev) => ({
+      ...prev,
+      enemyShots: prev.enemyShots + sb.projectileCount
+    }));
+    playProjectileLaunch(audioMuted);
   }, [
-    enemyWeapon,
     enemyAimError,
     audioMuted,
     updateMatchStats,
@@ -676,83 +994,207 @@ export function GameScreen({
     p2Move.yOffset,
     groundY,
     enemyHp,
-    playerHp
+    playerHp,
+    modeGameplay.aiAimErrorScale,
+    modeGameplay.windEffectScale,
+    modeGameplay.aiWindReadiness,
+    queueVolley,
+    progress.settings.difficulty,
+    characterBaseY
   ]);
 
   const scheduleEnemyShotRef = useRef(scheduleEnemyShot);
   scheduleEnemyShotRef.current = scheduleEnemyShot;
   const nextEnemyTimeoutRef = useRef<number | null>(null);
 
+  useEffect(() => {
+    const pDead = playerHp <= 0;
+    const eDead = local2p ? enemyHp <= 0 : !practice && enemyHp <= 0;
+    if (!pDead && !eDead) return;
+    if (nextEnemyTimeoutRef.current != null) {
+      window.clearTimeout(nextEnemyTimeoutRef.current);
+      nextEnemyTimeoutRef.current = null;
+    }
+  }, [playerHp, enemyHp, practice, local2p]);
+
+  const pushDamageFloater = useCallback(
+    (x: number, y: number, damage: number, side: 'player' | 'enemy') => {
+      const bx = Math.round(x / 8) * 8;
+      const by = Math.round(y / 10) * 10;
+      const key = `${bx}_${by}`;
+      const n = (floaterStackRef.current.get(key) ?? 0) + 1;
+      floaterStackRef.current.set(key, n);
+      const stack = n - 1;
+      const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      setDamageFloaters((prev) => [...prev, { id, xPct: x, yPct: y, damage, side, stack }].slice(-14));
+      window.setTimeout(() => {
+        const cur = (floaterStackRef.current.get(key) ?? 1) - 1;
+        if (cur <= 0) floaterStackRef.current.delete(key);
+        else floaterStackRef.current.set(key, cur);
+        setDamageFloaters((prev) => prev.filter((f) => f.id !== id));
+      }, 780);
+    },
+    []
+  );
+
   const handleShotResult = useCallback(
     (result: ShotResult) => {
-      setTriggerFire(null);
       const shooterWasPlayer = result.shooterWasPlayer;
-      updateMatchStats((prev) => ({ ...prev, turns: prev.turns + 1 }));
-      rollWind();
-
-      const queueNextEnemy = () => {
-        if (local2pRef.current) return;
-        if (nextEnemyTimeoutRef.current != null) {
-          window.clearTimeout(nextEnemyTimeoutRef.current);
+      try {
+        updateMatchStats((prev) => ({ ...prev, turns: prev.turns + 1 }));
+        if (!(result.outcome === 'miss' && result.blockedByInvuln)) {
+          rollWind();
         }
-        nextEnemyTimeoutRef.current = window.setTimeout(() => {
-          nextEnemyTimeoutRef.current = null;
-          if (local2pRef.current) return;
-          if (settingsOpenRef.current || matchHelpOpenRef.current) return;
-          if (playerHpRef.current <= 0 || enemyHpRef.current <= 0) return;
-          scheduleEnemyShotRef.current();
-        }, 2600);
-      };
 
-      if (result.outcome === 'miss') {
-        playMiss(audioMuted);
+        const queueNextEnemy = () => {
+          if (local2pRef.current) return;
+          if (nextEnemyTimeoutRef.current != null) {
+            window.clearTimeout(nextEnemyTimeoutRef.current);
+          }
+          nextEnemyTimeoutRef.current = window.setTimeout(() => {
+            nextEnemyTimeoutRef.current = null;
+            if (local2pRef.current) return;
+            if (matchRuntimePhaseRef.current !== 'playing') return;
+            if (settingsOpenRef.current || matchHelpOpenRef.current) return;
+            if (playerHpRef.current <= 0 || enemyHpRef.current <= 0) return;
+            if (!practiceRef.current && enemyHpRef.current <= 0) return;
+            scheduleEnemyShotRef.current();
+          }, resolveAiCadenceMs(modeGameplayRef.current, {
+            playerHp: playerHpRef.current,
+            enemyHp: enemyHpRef.current,
+            practice: practiceRef.current
+          }));
+        };
+
+        if (result.outcome === 'miss') {
+          const m = combatMetaRef.current;
+          if (shooterWasPlayer) m.streakPlayer = 0;
+          else m.streakEnemy = 0;
+          if (result.blockedByInvuln) {
+            playBlip(330, 0.05, audioMuted);
+            setLastExchangeLine('Blocked — invulnerable');
+            if (typeof navigator !== 'undefined' && navigator.vibrate && !audioMuted) {
+              navigator.vibrate(6);
+            }
+          } else {
+            playMissThud(audioMuted);
+            if (typeof navigator !== 'undefined' && navigator.vibrate && !audioMuted) {
+              navigator.vibrate(20);
+            }
+            if (result.nearMiss) {
+              const t = performance.now();
+              if (t - nearMissCooldownRef.current > 900) {
+                nearMissCooldownRef.current = t;
+                playSfx('near_miss', audioMuted);
+                bumpCallout('Near miss!');
+                setLastExchangeLine(
+                  shooterWasPlayer
+                    ? 'Near miss — adjust aim'
+                    : 'Close one — near miss'
+                );
+              } else {
+                setLastExchangeLine(
+                  shooterWasPlayer ? 'Miss' : 'Enemy miss'
+                );
+              }
+            } else {
+              setLastExchangeLine(shooterWasPlayer ? 'Miss' : 'Enemy miss');
+            }
+          }
+          queueNextEnemy();
+          return;
+        }
+
+        if (
+          (shooterWasPlayer && enemyDeadRef.current) ||
+          (!shooterWasPlayer && playerDeadRef.current)
+        ) {
+          queueNextEnemy();
+          return;
+        }
+
+        const { damage, impactX, impactY } = result;
+        pushDamageFloater(
+          impactX,
+          impactY,
+          damage,
+          shooterWasPlayer ? 'enemy' : 'player'
+        );
+        playHitImpact(audioMuted);
+        if (damage >= 28) {
+          playSfx('big_hit', audioMuted);
+          bumpCallout('Big hit!');
+        }
+        if (!reduceMotion) {
+          duckGameMusic({ factor: 0.34, holdMs: 210 });
+        }
         if (typeof navigator !== 'undefined' && navigator.vibrate && !audioMuted) {
-          navigator.vibrate(20);
+          navigator.vibrate([28, 36, 28]);
+        }
+
+        const invMs = modeGameplay.hitInvulnerabilityMs;
+        const meta = combatMetaRef.current;
+
+        if (shooterWasPlayer) {
+          meta.biggestHitPlayer = Math.max(meta.biggestHitPlayer, damage);
+          meta.streakPlayer += 1;
+          meta.streakEnemy = 0;
+          meta.maxStreakPlayer = Math.max(meta.maxStreakPlayer, meta.streakPlayer);
+          if (meta.streakPlayer >= 2) {
+            bumpCallout('Two in a row!');
+          }
+          updateMatchStats((prev) => ({
+            ...prev,
+            playerHits: prev.playerHits + 1,
+            playerDamage: prev.playerDamage + damage
+          }));
+          setEnemyDamageImmuneUntil(performance.now() + invMs);
+          setEnemyHitTint(true);
+          window.setTimeout(() => setEnemyHitTint(false), 220);
+          setEnemyHp((prev) => {
+            const next = practice
+              ? Math.max(1, prev - damage)
+              : Math.max(0, prev - damage);
+            if (!practice && next <= 0) {
+              enemyDeadRef.current = true;
+              window.setTimeout(() => {
+                playKillSting(audioMuted);
+                onGameOver(buildMatchResult('player'));
+              }, 1500);
+            }
+            return next;
+          });
+          setLastExchangeLine(`Hit · −${damage} HP`);
+        } else {
+          meta.biggestHitEnemy = Math.max(meta.biggestHitEnemy, damage);
+          meta.streakEnemy += 1;
+          meta.streakPlayer = 0;
+          meta.maxStreakEnemy = Math.max(meta.maxStreakEnemy, meta.streakEnemy);
+          updateMatchStats((prev) => ({
+            ...prev,
+            enemyHits: prev.enemyHits + 1,
+            enemyDamage: prev.enemyDamage + damage
+          }));
+          setPlayerDamageImmuneUntil(performance.now() + invMs);
+          setPlayerHitTint(true);
+          window.setTimeout(() => setPlayerHitTint(false), 220);
+          setPlayerHp((prev) => {
+            const next = Math.max(0, prev - damage);
+            if (next <= 0) {
+              playerDeadRef.current = true;
+              window.setTimeout(() => {
+                playKillSting(audioMuted);
+                onGameOver(buildMatchResult('enemy'));
+              }, 1500);
+            }
+            return next;
+          });
+          setLastExchangeLine(`Enemy hit · −${damage} HP`);
         }
         queueNextEnemy();
-        return;
+      } finally {
+        fireDispatch({ type: 'complete' });
       }
-
-      const { damage } = result;
-      playHit(audioMuted);
-      if (typeof navigator !== 'undefined' && navigator.vibrate && !audioMuted) {
-        navigator.vibrate([30, 40, 30]);
-      }
-
-      if (shooterWasPlayer) {
-        updateMatchStats((prev) => ({
-          ...prev,
-          playerHits: prev.playerHits + 1,
-          playerDamage: prev.playerDamage + damage
-        }));
-        setEnemyHitTint(true);
-        window.setTimeout(() => setEnemyHitTint(false), 220);
-        setEnemyHp((prev) => {
-          const next = practice
-            ? Math.max(1, prev - damage)
-            : Math.max(0, prev - damage);
-          if (!practice && next <= 0) {
-            setTimeout(() => onGameOver(buildMatchResult('player')), 1500);
-          }
-          return next;
-        });
-      } else {
-        updateMatchStats((prev) => ({
-          ...prev,
-          enemyHits: prev.enemyHits + 1,
-          enemyDamage: prev.enemyDamage + damage
-        }));
-        setPlayerHitTint(true);
-        window.setTimeout(() => setPlayerHitTint(false), 220);
-        setPlayerHp((prev) => {
-          const next = Math.max(0, prev - damage);
-          if (next <= 0) {
-            setTimeout(() => onGameOver(buildMatchResult('enemy')), 1500);
-          }
-          return next;
-        });
-      }
-      queueNextEnemy();
     },
     [
       practice,
@@ -760,28 +1202,78 @@ export function GameScreen({
       rollWind,
       onGameOver,
       buildMatchResult,
-      updateMatchStats
+      updateMatchStats,
+      pushDamageFloater,
+      modeGameplay.hitInvulnerabilityMs,
+      reduceMotion,
+      bumpCallout
     ]
   );
 
   const fireFromSnapshot = useCallback(() => {
+    if (gameplayPausedRef.current) return;
+    if (matchRuntimePhaseRef.current !== 'playing') return;
     if (!canAimRef.current) return;
+    if (playerHp <= 0 || enemyHp <= 0) return;
     const power = aimPowerRef.current;
     const angle = aimAngleRef.current;
     if (power < 5) return;
 
+    const wid = selectedWeaponId;
+    const sb = getSkillBehavior(wid);
+    const now = performance.now();
+    if (now < (p1SkillCdUntil[wid] ?? 0)) {
+      playBlip(220, 0.06, audioMuted);
+      return;
+    }
+
+    if (sb.kind === 'heal') {
+      const uses = healUsesRef.current.p1[wid] ?? 0;
+      if (uses >= (sb.maxUsesPerMatch ?? 99)) {
+        playBlip(180, 0.08, audioMuted);
+        return;
+      }
+      healUsesRef.current.p1[wid] = uses + 1;
+      setPlayerHp((h) => Math.min(100, h + (sb.healAmount ?? 0)));
+      setP1SkillCdUntil((prev) => ({ ...prev, [wid]: now + sb.cooldownMs }));
+      playSfx('heal', audioMuted);
+      logMatchDebug('skill_fire', { kind: 'heal', weaponId: wid, who: 'p1' });
+      setIsAiming(false);
+      setAimPullDeg(0);
+      return;
+    }
+
     updateMatchStats((prev) => ({
       ...prev,
-      playerShots: prev.playerShots + 1
+      playerShots: prev.playerShots + sb.projectileCount
     }));
-    setTriggerFire({
-      power,
-      angle,
-      timestamp: Date.now(),
-      velocityScale: selectedWeapon.velocityScale,
-      baseDamage: selectedWeapon.damage,
-      projectileStyle: selectedWeapon.projectileStyle,
-      shooterWasPlayer: true
+    const windMult =
+      modeGameplay.windEffectScale * sb.windEffectOnProjectile;
+    const dmg = Math.max(
+      1,
+      Math.round(selectedWeapon.damage * sb.perProjectileDamageMultiplier)
+    );
+    const vScale =
+      selectedWeapon.velocityScale * sb.velocityScaleMultiplier;
+    const baseTs = Date.now();
+    for (let i = 0; i < sb.projectileCount; i++) {
+      queueVolley({
+        power,
+        angle,
+        timestamp: baseTs + i * 4,
+        velocityScale: vScale,
+        baseDamage: dmg,
+        projectileStyle: selectedWeapon.projectileStyle,
+        shooterWasPlayer: true,
+        windEffectMultiplier: windMult,
+        gravityScale: sb.gravityScaleMultiplier
+      });
+    }
+    setP1SkillCdUntil((prev) => ({ ...prev, [wid]: now + sb.cooldownMs }));
+    logMatchDebug('skill_fire', {
+      kind: 'projectile',
+      weaponId: wid,
+      count: sb.projectileCount
     });
     setIsAiming(false);
     setAimPullDeg(0);
@@ -789,28 +1281,74 @@ export function GameScreen({
       setReleaseShaking(true);
       window.setTimeout(() => setReleaseShaking(false), 340);
     }
-    playBlip(440, 0.08, audioMuted);
-  }, [selectedWeapon, updateMatchStats, audioMuted, reduceMotion]);
+    playProjectileLaunch(audioMuted);
+  }, [
+    selectedWeapon,
+    selectedWeaponId,
+    p1SkillCdUntil,
+    updateMatchStats,
+    audioMuted,
+    reduceMotion,
+    queueVolley,
+    playerHp,
+    enemyHp,
+    modeGameplay.windEffectScale
+  ]);
 
   const fireKeyboardVolley = useCallback(
     (shooterWasPlayer: boolean, charge01: number) => {
-      if (!local2p || !p1LoadoutWeapon || !p2LoadoutWeapon) return;
+      if (gameplayPausedRef.current) return;
+      if (matchRuntimePhaseRef.current !== 'playing') return;
+      if (!local2p) return;
       const dead = shooterWasPlayer ? playerHp <= 0 : enemyHp <= 0;
       if (dead) return;
-      const w = shooterWasPlayer ? p1LoadoutWeapon : p2LoadoutWeapon;
+      const wid = shooterWasPlayer ? p1RuntimeWeaponId : p2RuntimeWeaponId;
+      const w = shooterWasPlayer ? p1RuntimeWeapon : p2RuntimeWeapon;
+      const sb = getSkillBehavior(wid);
+      const now = performance.now();
+      const cdMap = shooterWasPlayer ? p1SkillCdUntil : p2SkillCdUntil;
+      if (now < (cdMap[wid] ?? 0)) {
+        playBlip(220, 0.06, audioMuted);
+        return;
+      }
+
+      if (sb.kind === 'heal') {
+        const who = shooterWasPlayer ? 'p1' : 'p2';
+        const uses = healUsesRef.current[who][wid] ?? 0;
+        if (uses >= (sb.maxUsesPerMatch ?? 99)) {
+          playBlip(180, 0.08, audioMuted);
+          return;
+        }
+        healUsesRef.current[who][wid] = uses + 1;
+        if (shooterWasPlayer) {
+          setPlayerHp((h) => Math.min(100, h + (sb.healAmount ?? 0)));
+          setP1SkillCdUntil((prev) => ({ ...prev, [wid]: now + sb.cooldownMs }));
+        } else {
+          setEnemyHp((h) => Math.min(100, h + (sb.healAmount ?? 0)));
+          setP2SkillCdUntil((prev) => ({ ...prev, [wid]: now + sb.cooldownMs }));
+        }
+        playSfx('heal', audioMuted);
+        logMatchDebug('skill_fire', { kind: 'heal', weaponId: wid, who });
+        return;
+      }
+
+      const wSim =
+        wind.speed *
+        modeGameplay.windEffectScale *
+        sb.windEffectOnProjectile;
       const sol = findBestAim({
         shooterFacingRight: shooterWasPlayer,
-        velocityScale: w.velocityScale,
-        windSpeed: wind.speed,
+        velocityScale: w.velocityScale * sb.velocityScaleMultiplier,
+        windSpeed: wSim,
         windDirection: wind.direction,
         startX: shooterWasPlayer ? p1Move.x : p2Move.x,
         startY:
-          (shooterWasPlayer ? P1_POS.y + p1Move.yOffset : P2_POS.y + p2Move.yOffset) +
+          (shooterWasPlayer ? characterBaseY + p1Move.yOffset : characterBaseY + p2Move.yOffset) +
           PROJECTILE_START_Y_OFFSET,
         targetX: shooterWasPlayer ? p2Move.x : p1Move.x,
         targetY: shooterWasPlayer
-          ? P2_POS.y + p2Move.yOffset
-          : P1_POS.y + p1Move.yOffset,
+          ? characterBaseY + p2Move.yOffset
+          : characterBaseY + p1Move.yOffset,
         groundY
       });
       const pMin = 25;
@@ -822,33 +1360,60 @@ export function GameScreen({
       if (shooterWasPlayer) {
         updateMatchStats((prev) => ({
           ...prev,
-          playerShots: prev.playerShots + 1
+          playerShots: prev.playerShots + sb.projectileCount
         }));
       } else {
         updateMatchStats((prev) => ({
           ...prev,
-          enemyShots: prev.enemyShots + 1
+          enemyShots: prev.enemyShots + sb.projectileCount
         }));
       }
-      setTriggerFire({
-        power,
-        angle: sol.angleDeg,
-        timestamp: Date.now(),
-        velocityScale: w.velocityScale,
-        baseDamage: w.damage,
-        projectileStyle: w.projectileStyle,
-        shooterWasPlayer
+      const windMult =
+        modeGameplay.windEffectScale * sb.windEffectOnProjectile;
+      const dmg = Math.max(
+        1,
+        Math.round(w.damage * sb.perProjectileDamageMultiplier)
+      );
+      const vScale = w.velocityScale * sb.velocityScaleMultiplier;
+      const baseTs = Date.now();
+      for (let i = 0; i < sb.projectileCount; i++) {
+        queueVolley({
+          power,
+          angle: sol.angleDeg,
+          timestamp: baseTs + i * 4,
+          velocityScale: vScale,
+          baseDamage: dmg,
+          projectileStyle: w.projectileStyle,
+          shooterWasPlayer,
+          windEffectMultiplier: windMult,
+          gravityScale: sb.gravityScaleMultiplier
+        });
+      }
+      if (shooterWasPlayer) {
+        setP1SkillCdUntil((prev) => ({ ...prev, [wid]: now + sb.cooldownMs }));
+      } else {
+        setP2SkillCdUntil((prev) => ({ ...prev, [wid]: now + sb.cooldownMs }));
+      }
+      logMatchDebug('skill_fire', {
+        kind: 'projectile',
+        weaponId: wid,
+        count: sb.projectileCount,
+        who: shooterWasPlayer ? 'p1' : 'p2'
       });
       if (!reduceMotion) {
         setReleaseShaking(true);
         window.setTimeout(() => setReleaseShaking(false), 220);
       }
-      playBlip(440, 0.08, audioMuted);
+      playProjectileLaunch(audioMuted);
     },
     [
       local2p,
-      p1LoadoutWeapon,
-      p2LoadoutWeapon,
+      p1RuntimeWeapon,
+      p2RuntimeWeapon,
+      p1RuntimeWeaponId,
+      p2RuntimeWeaponId,
+      p1SkillCdUntil,
+      p2SkillCdUntil,
       playerHp,
       enemyHp,
       wind.speed,
@@ -858,9 +1423,12 @@ export function GameScreen({
       p2Move.x,
       p2Move.yOffset,
       groundY,
+      characterBaseY,
       updateMatchStats,
       audioMuted,
-      reduceMotion
+      reduceMotion,
+      queueVolley,
+      modeGameplay.windEffectScale
     ]
   );
 
@@ -869,19 +1437,30 @@ export function GameScreen({
 
   useEffect(() => {
     if (local2p) return;
-    const id = window.setTimeout(() => scheduleEnemyShotRef.current(), 2200);
+    const id = window.setTimeout(
+      () => scheduleEnemyShotRef.current(),
+      modeGameplay.aiInitialDelayMs
+    );
     return () => window.clearTimeout(id);
-  }, [local2p]);
+  }, [local2p, modeGameplay.aiInitialDelayMs]);
 
   const handleFire = useCallback(() => {
+    if (gameplayPaused) return;
+    if (matchRuntimePhase !== 'playing') return;
     if (!canAim || aimPower < 5) return;
     aimPowerRef.current = aimPower;
     aimAngleRef.current = aimAngle;
     fireFromSnapshot();
-  }, [canAim, aimPower, aimAngle, fireFromSnapshot]);
+  }, [canAim, aimPower, aimAngle, fireFromSnapshot, gameplayPaused, matchRuntimePhase]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
+      if (
+        gameplayPausedRef.current ||
+        matchRuntimePhaseRef.current !== 'playing'
+      ) {
+        return;
+      }
       const step = (s: PlayerMovementState): PlayerMovementState => {
         if (s.grounded) return s;
         const vy = s.vy + 0.13;
@@ -899,6 +1478,12 @@ export function GameScreen({
 
   useEffect(() => {
     const id = window.setInterval(() => {
+      if (
+        gameplayPausedRef.current ||
+        matchRuntimePhaseRef.current !== 'playing'
+      ) {
+        return;
+      }
       const k = keysHeldRef.current;
       if (k.p1Left) moveP1(-1.6);
       if (k.p1Right) moveP1(1.6);
@@ -912,16 +1497,21 @@ export function GameScreen({
     if (!local2p) return;
     let raf = 0;
     const tick = () => {
-      const now = performance.now();
-      if (chargeStartRef.current.p1 != null) {
-        setP1Charge01(Math.min(1, (now - chargeStartRef.current.p1) / 1400));
-      } else {
-        setP1Charge01(0);
-      }
-      if (chargeStartRef.current.p2 != null) {
-        setP2Charge01(Math.min(1, (now - chargeStartRef.current.p2) / 1400));
-      } else {
-        setP2Charge01(0);
+      if (
+        !gameplayPausedRef.current &&
+        matchRuntimePhaseRef.current === 'playing'
+      ) {
+        const now = performance.now();
+        if (chargeStartRef.current.p1 != null) {
+          setP1Charge01(Math.min(1, (now - chargeStartRef.current.p1) / 1400));
+        } else {
+          setP1Charge01(0);
+        }
+        if (chargeStartRef.current.p2 != null) {
+          setP2Charge01(Math.min(1, (now - chargeStartRef.current.p2) / 1400));
+        } else {
+          setP2Charge01(0);
+        }
       }
       raf = requestAnimationFrame(tick);
     };
@@ -931,7 +1521,8 @@ export function GameScreen({
 
   const handleSlingshotPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!canAimRef.current || settingsOpen) return;
+      if (!canAimRef.current || settingsOpen || matchHelpOpen) return;
+      if (matchRuntimePhase !== 'playing') return;
       const root = gameRootRef.current;
       if (!root) return;
       const pct = clientToArenaPercent(
@@ -940,7 +1531,7 @@ export function GameScreen({
         root.getBoundingClientRect()
       );
       const ax = p1Move.x;
-      const ay = P1_POS.y + p1Move.yOffset;
+      const ay = characterBaseY + p1Move.yOffset;
       if (!pointerNearAnchor(pct.x, pct.y, ax, ay, 10)) return;
       try {
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -961,7 +1552,7 @@ export function GameScreen({
       aimAngleRef.current = r.aimAngle;
       aimPowerRef.current = r.aimPower;
     },
-    [settingsOpen, p1Move.x, p1Move.yOffset]
+    [settingsOpen, matchHelpOpen, p1Move.x, p1Move.yOffset, characterBaseY, matchRuntimePhase]
   );
   const handleSlingshotPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -974,7 +1565,7 @@ export function GameScreen({
         root.getBoundingClientRect()
       );
       const ax = p1Move.x;
-      const ay = P1_POS.y + p1Move.yOffset;
+      const ay = characterBaseY + p1Move.yOffset;
       const r = slingshotAimFromPointer(
         pct,
         { x: ax, y: ay },
@@ -1024,12 +1615,47 @@ export function GameScreen({
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
 
       if (local2p) {
+        const code = ev.code;
+        if (
+          code.startsWith('Digit') &&
+          code.length === 6 &&
+          !code.startsWith('Numpad')
+        ) {
+          const n = Number(code.slice(5)) - 1;
+          if (n >= 0 && n < LOCAL2P_HOTBAR.length) {
+            ev.preventDefault();
+            if (!canSwapWeapon()) {
+              playBlip(220, 0.06, audioMuted);
+              return;
+            }
+            tryWeaponSwap();
+            setP1RuntimeWeaponId(LOCAL2P_HOTBAR[n]!.id);
+          }
+          return;
+        }
+        if (/^Numpad[1-9]$/.test(code)) {
+          const n = Number(code.slice(6)) - 1;
+          if (n >= 0 && n < LOCAL2P_HOTBAR.length) {
+            ev.preventDefault();
+            if (!canSwapWeapon()) {
+              playBlip(220, 0.06, audioMuted);
+              return;
+            }
+            tryWeaponSwap();
+            setP2RuntimeWeaponId(LOCAL2P_HOTBAR[n]!.id);
+          }
+          return;
+        }
+
         const k = ev.key;
         if (
-          ['a', 'A', 'd', 'D', 'w', 'W', 'f', 'F', 'l', 'L'].includes(k) ||
+          ['a', 'A', 'd', 'D', 'w', 'W'].includes(k) ||
           k === 'ArrowLeft' ||
           k === 'ArrowRight' ||
-          k === 'ArrowUp'
+          k === 'ArrowUp' ||
+          code === 'Space' ||
+          code === 'Enter' ||
+          code === 'NumpadEnter'
         ) {
           ev.preventDefault();
         }
@@ -1038,7 +1664,8 @@ export function GameScreen({
         else if (k === 'w' || k === 'W') {
           if (ev.repeat) return;
           if (playerHpRef.current > 0) jumpP1();
-        } else if (k === 'f' || k === 'F') {
+        } else if (code === 'Space') {
+          if (ev.repeat) return;
           if (playerHpRef.current > 0 && chargeStartRef.current.p1 == null) {
             chargeStartRef.current.p1 = performance.now();
             setChargingBy('p1');
@@ -1048,7 +1675,8 @@ export function GameScreen({
         else if (k === 'ArrowUp') {
           if (ev.repeat) return;
           if (enemyHpRef.current > 0) jumpP2();
-        } else if (k === 'l' || k === 'L') {
+        } else if (code === 'Enter' || code === 'NumpadEnter') {
+          if (ev.repeat) return;
           if (enemyHpRef.current > 0 && chargeStartRef.current.p2 == null) {
             chargeStartRef.current.p2 = performance.now();
             setChargingBy('p2');
@@ -1090,12 +1718,13 @@ export function GameScreen({
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
 
       if (local2p) {
+        const code = ev.code;
         const k = ev.key;
         if (k === 'a' || k === 'A') keysHeldRef.current.p1Left = false;
         else if (k === 'd' || k === 'D') keysHeldRef.current.p1Right = false;
         else if (k === 'ArrowLeft') keysHeldRef.current.p2Left = false;
         else if (k === 'ArrowRight') keysHeldRef.current.p2Right = false;
-        else if (k === 'f' || k === 'F') {
+        else if (code === 'Space') {
           const started = chargeStartRef.current.p1;
           chargeStartRef.current.p1 = null;
           setChargingBy((c) => (c === 'p1' ? null : c));
@@ -1103,7 +1732,7 @@ export function GameScreen({
             const ch = Math.min(1, (performance.now() - started) / 1400);
             fireKeyboardVolleyRef.current(true, ch);
           }
-        } else if (k === 'l' || k === 'L') {
+        } else if (code === 'Enter' || code === 'NumpadEnter') {
           const started = chargeStartRef.current.p2;
           chargeStartRef.current.p2 = null;
           setChargingBy((c) => (c === 'p2' ? null : c));
@@ -1129,7 +1758,10 @@ export function GameScreen({
     moveP1,
     jumpP1,
     cycleP1Stance,
-    jumpP2
+    jumpP2,
+    canSwapWeapon,
+    tryWeaponSwap,
+    audioMuted
   ]);
 
   useEffect(() => {
@@ -1155,6 +1787,104 @@ export function GameScreen({
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [matchHelpOpen]);
+
+  const actionHud = useMemo(() => {
+    const now = performance.now();
+    let actionOwnerLabel = 'You';
+    let status: ActionStatus = 'Standing';
+    let skillLabel = selectedWeapon.name;
+    let skillIcon = selectedWeapon.icon;
+    let secondarySkillLine: string | null = null;
+    let angleDeg: number | null = null;
+    let powerPct: number | null = null;
+
+    if (local2p) {
+      actionOwnerLabel =
+        chargingBy === 'p1'
+          ? 'Player 1 acting'
+          : chargingBy === 'p2'
+            ? 'Player 2 acting'
+            : triggerFire
+              ? triggerFire.shooterWasPlayer
+                ? 'Player 1 shot in flight'
+                : 'Player 2 shot in flight'
+              : 'Local duel';
+      skillLabel =
+        chargingBy === 'p1'
+          ? p1RuntimeWeapon.name
+          : chargingBy === 'p2'
+            ? p2RuntimeWeapon.name
+            : `${p1RuntimeWeapon.name} · ${p2RuntimeWeapon.name}`;
+      skillIcon =
+        chargingBy === 'p2' ? p2RuntimeWeapon.icon : p1RuntimeWeapon.icon;
+      secondarySkillLine = `P1 ${p1RuntimeWeapon.icon} ${p1RuntimeWeapon.name} · P2 ${p2RuntimeWeapon.icon} ${p2RuntimeWeapon.name}`;
+      if (chargingBy && (chargingBy === 'p1' ? p1Charge01 : p2Charge01) > 0.02) {
+        status = 'Charging';
+        angleDeg = previewAimAngleDeg;
+        powerPct = (chargingBy === 'p1' ? p1Charge01 : p2Charge01) * 100;
+      } else if (triggerFire) {
+        status = 'Shooting';
+      } else if (now < playerDamageImmuneUntil || now < enemyDamageImmuneUntil) {
+        status = 'Hurt';
+      } else if (playerHp <= 0 || enemyHp <= 0) {
+        status = 'Defeated';
+      } else {
+        status = stanceToActionStatus(p1Move.stance);
+      }
+    } else {
+      actionOwnerLabel = `You vs ${enemyName}`;
+      skillLabel = selectedWeapon.name;
+      skillIcon = selectedWeapon.icon;
+      if (playerHp <= 0) {
+        status = 'Defeated';
+      } else if (now < playerDamageImmuneUntil) {
+        status = 'Hurt';
+      } else if (isAiming && aimPower > 5) {
+        status = 'Aiming';
+        angleDeg = aimAngle;
+        powerPct = aimPower;
+      } else if (triggerFire?.shooterWasPlayer) {
+        status = 'Shooting';
+        angleDeg = aimAngleRef.current;
+        powerPct = aimPowerRef.current;
+      } else if (triggerFire && !triggerFire.shooterWasPlayer) {
+        status = 'Idle';
+      } else {
+        status = stanceToActionStatus(p1Move.stance);
+      }
+    }
+
+    return {
+      actionOwnerLabel,
+      status,
+      skillLabel,
+      skillIcon,
+      secondarySkillLine,
+      angleDeg,
+      powerPct
+    };
+  }, [
+    local2p,
+    chargingBy,
+    triggerFire,
+    selectedWeapon.name,
+    selectedWeapon.icon,
+    enemyName,
+    p1RuntimeWeapon,
+    p2RuntimeWeapon,
+    p1Charge01,
+    p2Charge01,
+    previewAimAngleDeg,
+    playerDamageImmuneUntil,
+    enemyDamageImmuneUntil,
+    playerHp,
+    enemyHp,
+    p1Move.stance,
+    isAiming,
+    aimPower,
+    aimAngle,
+    hudTick
+  ]);
 
   const toggleFullscreen = async () => {
     try {
@@ -1204,13 +1934,17 @@ export function GameScreen({
           groundY={groundY}
           playerHitTint={playerHitTint}
           enemyHitTint={enemyHitTint}
-          playerPos={{ x: p1Move.x, y: P1_POS.y + p1Move.yOffset }}
-          enemyPos={{ x: p2Move.x, y: P2_POS.y + p2Move.yOffset }}
+          playerDamageImmuneUntil={playerDamageImmuneUntil}
+          enemyDamageImmuneUntil={enemyDamageImmuneUntil}
+          playerPos={{ x: p1Move.x, y: characterBaseY + p1Move.yOffset }}
+          enemyPos={{ x: p2Move.x, y: characterBaseY + p2Move.yOffset }}
           playerStance={p1Move.stance}
           enemyStance={p2Move.stance}
           triggerFire={triggerFire}
           onShotResult={handleShotResult}
           reduceMotion={reduceMotion}
+          simPaused={simPaused}
+          onProjectileCount={onProjectileCount}
           playerAccentHex={progress.playerAccentHex}
           playerCharacterId={
             local2p && local2pLoadout
@@ -1250,6 +1984,7 @@ export function GameScreen({
                   reduceMotion ? { duration: 0 } : { duration: 0.34, ease: 'easeOut' }
                 }>
                 {playfield}
+                <DamageFloaters items={damageFloaters} reduceMotion={reduceMotion} />
                 <AimTrajectoryOverlay
                   points={previewPoints}
                   terminal={previewTerminal}
@@ -1259,6 +1994,9 @@ export function GameScreen({
                   facingRight={previewFacingRight}
                   stroke={previewStroke}
                   reduceMotion={reduceMotion}
+                  trajectoryStrength={
+                    practice ? 'practice' : local2p ? 'local2p' : 'ranked'
+                  }
                   visible={
                     local2p
                       ? !!chargingBy &&
@@ -1268,7 +2006,12 @@ export function GameScreen({
                 />
                 {!local2p ? (
                   <AimInteractionLayer
-                    active={canAim && !settingsOpen && !matchHelpOpen}
+                    active={
+                      canAim &&
+                      matchRuntimePhase === 'playing' &&
+                      !settingsOpen &&
+                      !matchHelpOpen
+                    }
                     onPointerDown={handleSlingshotPointerDown}
                     onPointerMove={handleSlingshotPointerMove}
                     onPointerUp={handleSlingshotPointerUp}
@@ -1318,6 +2061,13 @@ export function GameScreen({
         </div>
       )}
 
+      {(settingsOpen || matchHelpOpen) && (
+        <div
+          className="pointer-events-auto fixed inset-0 z-[14] bg-black/60 backdrop-blur-[1.5px]"
+          aria-hidden
+        />
+      )}
+
       {matchHelpOpen && (
         <div
           className="pointer-events-auto absolute bottom-[max(7rem,env(safe-area-inset-bottom))] left-2 right-2 z-[22] mx-auto w-[min(22rem,calc(100vw-1rem))] sm:left-auto sm:right-4 sm:mx-0 sm:w-[min(22rem,calc(100vw-2rem))]"
@@ -1341,9 +2091,10 @@ export function GameScreen({
             <ul className="list-disc space-y-1.5 pl-4 text-xs text-gray-200 marker:text-neon-cyan">
               {local2p ? (
                 <li>
-                  Same keyboard: P1 A/D move, W jump, hold F to charge and release
-                  to shoot. P2 arrows move/jump, hold L to charge and release to
-                  shoot.
+                  Same keyboard: P1 A/D move, W jump, hold Space to charge and
+                  release to shoot. P2 arrows move/jump, hold Enter to charge and
+                  release to shoot. Tap 1–5 for P1 weapon, Numpad 1–5 for P2 (first
+                  five presets).
                 </li>
               ) : (
                 <li>Offline vs AI — not live PvP.</li>
@@ -1354,6 +2105,13 @@ export function GameScreen({
                 aiming.
               </li>
               <li>Win by bringing the rival to 0 HP.</li>
+              {practice && !local2p ? (
+                <li className="text-neon-yellow/95">
+                  Practice: aim preview is stronger here. Wind still shifts each
+                  volley — read the capsule (direction, speed, tier) before you
+                  commit.
+                </li>
+              ) : null}
             </ul>
             {local2p ? (
               <NeonButton
@@ -1399,13 +2157,13 @@ export function GameScreen({
               </div>
             </div>
             <div className="min-w-0 flex-1">
-              <div className="mb-0.5 truncate font-display text-[11px] font-bold text-white sm:mb-1 sm:text-sm">
+              <div className="mb-0.5 truncate font-display text-xs font-bold text-white sm:mb-1 sm:text-base">
                 {playerDisplayName}
               </div>
               <ProgressBar
                 progress={playerHp}
                 color="bg-neon-cyan"
-                height="h-3"
+                height="h-3.5"
                 showLabel
               />
             </div>
@@ -1446,6 +2204,13 @@ export function GameScreen({
                   onClick={() => {
                     setEnemyHp(100);
                     setPlayerHp(100);
+                    playerDeadRef.current = false;
+                    enemyDeadRef.current = false;
+                    fireDispatch({ type: 'clear' });
+                    setP1SkillCdUntil({});
+                    setP2SkillCdUntil({});
+                    setEnemySkillCdUntil({});
+                    healUsesRef.current = { p1: {}, p2: {} };
                   }}>
                   <span className="text-center font-display text-[10px] font-black tracking-wide text-neon-lime sm:text-xs">
                     RESET DUMMY HP
@@ -1463,6 +2228,32 @@ export function GameScreen({
               </GlassCard>
             ) : null}
 
+            {(matchCallout || lastExchangeLine) && (
+              <div className="pointer-events-none w-[min(18rem,88vw)] px-1">
+                <GlassCard
+                  variant="sticker"
+                  className={`border px-3 py-2 ${
+                    matchCallout
+                      ? 'border-neon-yellow/45 shadow-[0_0_14px_rgba(255,220,0,0.1)]'
+                      : 'border-white/12'
+                  }`}>
+                  {matchCallout ? (
+                    <p className="font-display text-xs font-black uppercase tracking-wide text-neon-yellow">
+                      {matchCallout}
+                    </p>
+                  ) : null}
+                  {lastExchangeLine ? (
+                    <p
+                      className={`font-display text-[10px] text-gray-300 ${
+                        matchCallout ? 'mt-1' : ''
+                      }`}>
+                      Last exchange: {lastExchangeLine}
+                    </p>
+                  ) : null}
+                </GlassCard>
+              </div>
+            )}
+
             {!local2p && canAim && (isAiming || aimPower > 4) ? (
               <motion.div
                 initial={{ opacity: 0, y: 6 }}
@@ -1474,6 +2265,10 @@ export function GameScreen({
                   <div className="mb-1 flex justify-between font-display text-[10px] tracking-wide text-gray-300">
                     <span>POWER</span>
                     <span>{Math.round(aimPower)}%</span>
+                  </div>
+                  <div className="mb-1 flex justify-between font-display text-[10px] tracking-wide text-gray-300">
+                    <span>ANGLE</span>
+                    <span>{Math.round(aimAngle)}°</span>
                   </div>
                   <motion.div
                     animate={
@@ -1532,6 +2327,10 @@ export function GameScreen({
                       %
                     </span>
                   </div>
+                  <div className="mb-1 flex justify-between font-display text-[10px] tracking-wide text-gray-300">
+                    <span>ANGLE</span>
+                    <span>{Math.round(previewAimAngleDeg)}°</span>
+                  </div>
                   <ProgressBar
                     progress={
                       (chargingBy === 'p1' ? p1Charge01 : p2Charge01) * 100
@@ -1554,17 +2353,41 @@ export function GameScreen({
                 size={18}
                 className="h-4 w-4 shrink-0 text-neon-cyan sm:h-[18px] sm:w-[18px]"
               />
-              <span className="font-display text-xs font-bold sm:text-sm">
+              <span className="hidden font-display text-[9px] font-black uppercase tracking-wide text-gray-400 sm:inline">
+                {windStrengthTier}
+              </span>
+              <span className="font-display text-xs font-bold tabular-nums sm:text-base">
                 {wind.speed}
               </span>
               <motion.div
+                className="leading-none font-black text-neon-cyan select-none"
+                style={{ fontSize: `${windArrowFontRem}rem` }}
                 animate={windArrowMotion.animate}
                 transition={windArrowMotion.transition}>
                 {wind.direction === 'right' ? '→' : '←'}
               </motion.div>
             </GlassCard>
+            <div className="w-full max-w-[min(22rem,calc(100vw-2rem))] px-1">
+              <ActionStatusPanel
+                actionOwnerLabel={actionHud.actionOwnerLabel}
+                status={actionHud.status}
+                skillLabel={actionHud.skillLabel}
+                skillIcon={actionHud.skillIcon}
+                angleDeg={actionHud.angleDeg}
+                powerPct={actionHud.powerPct}
+                windSpeed={wind.speed}
+                windDirection={wind.direction}
+                windStrengthTier={windStrengthTier}
+                reduceMotion={reduceMotion}
+                secondarySkillLine={actionHud.secondarySkillLine}
+                incomingCount={incomingProjectiles}
+              />
+            </div>
             <p className="pointer-events-none font-display text-[10px] uppercase tracking-[0.18em] text-gray-300">
               {activeMap.name}
+            </p>
+            <p className="pointer-events-none text-center font-display text-[9px] uppercase tracking-widest text-neon-purple/90">
+              {practice ? 'Practice' : local2p ? 'Local 2P' : 'Ranked'}
             </p>
           </div>
 
@@ -1589,13 +2412,13 @@ export function GameScreen({
               </div>
             </div>
             <div className="min-w-0 flex-1 text-right">
-              <div className="mb-0.5 truncate font-display text-[11px] font-bold text-white sm:mb-1 sm:text-sm">
+              <div className="mb-0.5 truncate font-display text-xs font-bold text-white sm:mb-1 sm:text-base">
                 {enemyName}
               </div>
               <ProgressBar
                 progress={enemyHp}
                 color="bg-neon-magenta"
-                height="h-3"
+                height="h-3.5"
                 showLabel
                 className="rotate-180"
               />
@@ -1694,26 +2517,56 @@ export function GameScreen({
                       className="relative z-0 flex touch-pan-x snap-x snap-mandatory flex-nowrap gap-1.5 overflow-x-auto overflow-y-visible overscroll-x-contain scroll-smooth px-2 py-1 pb-1 [-webkit-overflow-scrolling:touch]">
                       {WEAPON_PRESETS.map((w: Weapon) => {
                         const selected = selectedWeaponId === w.id;
+                        const sb = getSkillBehavior(w.id);
+                        const cdUntil = p1SkillCdUntil[w.id] ?? 0;
+                        const cdSec =
+                          sb.cooldownMs > 0
+                            ? Math.max(
+                                0,
+                                Math.ceil((cdUntil - performance.now()) / 1000)
+                              )
+                            : 0;
+                        const onCd = cdSec > 0;
                         const card = (
                           <GlassCard
                             variant="sticker"
                             interactive
+                            role="button"
+                            aria-pressed={selected}
+                            aria-label={`${w.name}${onCd ? `, cooldown ${cdSec} seconds` : ''}`}
                             glowColor={selected ? 'cyan' : 'none'}
-                            className={`flex h-full shrink-0 cursor-pointer items-center gap-1.5 border px-2 py-1.5 ${
+                            className={`relative flex min-h-[52px] h-full shrink-0 cursor-pointer flex-col items-stretch gap-0.5 border px-2 py-1.5 ${
                               selected
                                 ? 'ring-2 ring-neon-cyan border-neon-cyan/50'
                                 : 'border-white/20'
-                            }`}
+                            } ${onCd ? 'opacity-60' : ''}`}
                             onClick={() => {
+                              if (!canSwapWeapon()) {
+                                playBlip(220, 0.06, audioMuted);
+                                return;
+                              }
+                              tryWeaponSwap();
                               setSelectedWeaponId(w.id);
                               progress.setEquippedWeaponId(w.id);
                             }}>
-                            <span className="text-base leading-none">
-                              {w.icon}
-                            </span>
-                            <span className="font-display text-[11px] leading-tight text-gray-200">
-                              {w.name}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-lg leading-none">{w.icon}</span>
+                              <span className="font-display text-[11px] leading-tight text-gray-200">
+                                {w.name}
+                              </span>
+                            </div>
+                            {sb.kind === 'heal' ? (
+                              <span className="text-[9px] font-display text-gray-500">
+                                Uses{' '}
+                                {healUsesRef.current.p1[w.id] ?? 0}/
+                                {sb.maxUsesPerMatch ?? '∞'}
+                              </span>
+                            ) : null}
+                            {sb.cooldownMs > 0 ? (
+                              <span className="text-[9px] font-display text-gray-500">
+                                {onCd ? `${cdSec}s` : 'Ready'}
+                              </span>
+                            ) : null}
                           </GlassCard>
                         );
                         return (
@@ -1748,6 +2601,139 @@ export function GameScreen({
                 </div>
               </motion.div>
             )}
+            {local2p && (
+              <motion.div
+                initial={{ y: 80, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: 80, opacity: 0 }}
+                className="pointer-events-auto mx-auto w-full max-w-3xl px-4">
+                <div className="w-full space-y-2 rounded-xl border border-white/10 bg-dark-darker/50 p-2 shadow-glass backdrop-blur-sm">
+                  <p className="text-center font-display text-[9px] uppercase tracking-wider text-gray-500">
+                    P1: 1–5 weapons · Space charge · P2: Numpad 1–5 · Enter charge
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
+                    <div>
+                      <p className="mb-1 text-center font-display text-[10px] font-bold text-neon-cyan sm:text-left">
+                        Player 1
+                      </p>
+                      <div className="flex flex-wrap justify-center gap-1.5 sm:justify-start sm:pl-0.5">
+                        {LOCAL2P_HOTBAR.map((w) => {
+                          const sel = p1RuntimeWeaponId === w.id;
+                          const sb = getSkillBehavior(w.id);
+                          const cdSec =
+                            sb.cooldownMs > 0
+                              ? Math.max(
+                                  0,
+                                  Math.ceil(
+                                    ((p1SkillCdUntil[w.id] ?? 0) - performance.now()) /
+                                      1000
+                                  )
+                                )
+                              : 0;
+                          return (
+                            <GlassCard
+                              key={`p1w-${w.id}`}
+                              variant="sticker"
+                              interactive
+                              role="button"
+                              aria-pressed={sel}
+                              glowColor={sel ? 'cyan' : 'none'}
+                              className={`flex min-h-[48px] min-w-[4.5rem] flex-col items-center justify-center gap-0.5 border px-1.5 py-1 ${
+                                sel
+                                  ? 'border-neon-cyan/60 ring-2 ring-neon-cyan/40'
+                                  : 'border-white/15'
+                              } ${cdSec > 0 ? 'opacity-60' : ''}`}
+                              onClick={() => {
+                                if (!canSwapWeapon()) {
+                                  playBlip(220, 0.06, audioMuted);
+                                  return;
+                                }
+                                tryWeaponSwap();
+                                setP1RuntimeWeaponId(w.id);
+                              }}>
+                              <span className="text-base leading-none">{w.icon}</span>
+                              <span className="max-w-[4.5rem] truncate text-center font-display text-[9px] text-gray-200">
+                                {w.name}
+                              </span>
+                              {sb.kind === 'heal' ? (
+                                <span className="text-[8px] text-gray-500">
+                                  {healUsesRef.current.p1[w.id] ?? 0}/
+                                  {sb.maxUsesPerMatch ?? '∞'} uses
+                                </span>
+                              ) : null}
+                              {sb.cooldownMs > 0 ? (
+                                <span className="text-[8px] text-gray-500">
+                                  {cdSec > 0 ? `${cdSec}s` : 'Ready'}
+                                </span>
+                              ) : null}
+                            </GlassCard>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="mb-1 text-center font-display text-[10px] font-bold text-neon-magenta sm:text-right">
+                        Player 2
+                      </p>
+                      <div className="flex flex-wrap justify-center gap-1.5 sm:justify-end sm:pr-0.5">
+                        {LOCAL2P_HOTBAR.map((w) => {
+                          const sel = p2RuntimeWeaponId === w.id;
+                          const sb = getSkillBehavior(w.id);
+                          const cdSec =
+                            sb.cooldownMs > 0
+                              ? Math.max(
+                                  0,
+                                  Math.ceil(
+                                    ((p2SkillCdUntil[w.id] ?? 0) - performance.now()) /
+                                      1000
+                                  )
+                                )
+                              : 0;
+                          return (
+                            <GlassCard
+                              key={`p2w-${w.id}`}
+                              variant="sticker"
+                              interactive
+                              role="button"
+                              aria-pressed={sel}
+                              glowColor={sel ? 'magenta' : 'none'}
+                              className={`flex min-h-[48px] min-w-[4.5rem] flex-col items-center justify-center gap-0.5 border px-1.5 py-1 ${
+                                sel
+                                  ? 'border-neon-magenta/60 ring-2 ring-neon-magenta/35'
+                                  : 'border-white/15'
+                              } ${cdSec > 0 ? 'opacity-60' : ''}`}
+                              onClick={() => {
+                                if (!canSwapWeapon()) {
+                                  playBlip(220, 0.06, audioMuted);
+                                  return;
+                                }
+                                tryWeaponSwap();
+                                setP2RuntimeWeaponId(w.id);
+                              }}>
+                              <span className="text-base leading-none">{w.icon}</span>
+                              <span className="max-w-[4.5rem] truncate text-center font-display text-[9px] text-gray-200">
+                                {w.name}
+                              </span>
+                              {sb.kind === 'heal' ? (
+                                <span className="text-[8px] text-gray-500">
+                                  {healUsesRef.current.p2[w.id] ?? 0}/
+                                  {sb.maxUsesPerMatch ?? '∞'} uses
+                                </span>
+                              ) : null}
+                              {sb.cooldownMs > 0 ? (
+                                <span className="text-[8px] text-gray-500">
+                                  {cdSec > 0 ? `${cdSec}s` : 'Ready'}
+                                </span>
+                              ) : null}
+                            </GlassCard>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
 
           <div className="relative flex flex-wrap items-center justify-end gap-2 pointer-events-auto sm:gap-4">
@@ -1768,7 +2754,7 @@ export function GameScreen({
                       <button
                         type="button"
                         onClick={() => setSettingsOpen(false)}
-                        className="text-gray-400 hover:text-white">
+                        className="rounded text-gray-400 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-dark-darker">
                         <XIcon size={18} />
                       </button>
                     </div>
