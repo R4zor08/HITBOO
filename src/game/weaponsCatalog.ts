@@ -242,6 +242,15 @@ export const WEAPONS_CATALOG: WeaponCatalogEntry[] = [
     rarity: 'epic',
     projectileStyle: 'launcher_bolt',
     physicsPreset: 'line_fast'
+  },
+  {
+    id: 'repair_spray',
+    sheetIndex: 25,
+    name: 'Repair Spray',
+    icon: '💚',
+    rarity: 'rare',
+    projectileStyle: 'energy_ring',
+    physicsPreset: 'arc_light'
   }
 ];
 

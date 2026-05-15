@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { MapIcon } from 'lucide-react';
 import { NeonButton } from '../components/ui/NeonButton';
@@ -22,16 +22,16 @@ export function MapSelectScreen({ mode, onContinue, onCancel }: MapSelectScreenP
   const progress = useHitBowProgress();
   const reduceMotion = progress.settings.reduceMotion;
   const [mapId, setMapId] = useState<MapId>(DEFAULT_MAP_ID);
-  const selected = useMemo(() => getMapById(mapId), [mapId]);
+  const activeMap = getMapById(mapId);
 
   const isOnline = mode === 'online';
   const accent = isOnline ? 'text-neon-cyan' : 'text-neon-lime';
-  const borderAccent = isOnline ? 'border-neon-cyan/35' : 'border-neon-lime/35';
   const variant = isOnline ? 'cyan' : 'lime';
+  const glow = isOnline ? 'cyan' : 'lime';
 
   return (
     <motion.div
-      className="relative min-h-dvh h-dvh w-full overflow-hidden bg-dark-darker"
+      className="relative min-h-dvh h-dvh w-full overflow-hidden"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0, scale: 0.98 }}
@@ -39,21 +39,29 @@ export function MapSelectScreen({ mode, onContinue, onCancel }: MapSelectScreenP
       {!reduceMotion ? (
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 z-0 scale-110 bg-cover bg-center opacity-[0.22]"
-          style={{
-            backgroundImage: `url(${selected.previewSrc})`,
-            filter: 'blur(56px)'
-          }}
-        />
+          className="pointer-events-none absolute inset-0 z-[1] overflow-hidden">
+          <div
+            className="absolute inset-[-12%] scale-105 bg-cover bg-center opacity-[0.22] blur-3xl saturate-[1.15]"
+            style={{ backgroundImage: `url(${activeMap.backgroundSrc})` }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-dark-darker/80 via-dark-darker/40 to-dark-darker/95" />
+        </div>
       ) : null}
-      <div className="relative z-10 flex min-h-dvh flex-1 flex-col">
-        <ScreenFrame
-          reduceMotion={reduceMotion}
-          showParticles={!reduceMotion}
-          className="bg-transparent"
-          contentClassName="items-stretch justify-start overflow-y-auto px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))]">
-          <div className="mx-auto w-full max-w-5xl space-y-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+
+      <ScreenFrame
+        reduceMotion={reduceMotion}
+        showParticles={!reduceMotion}
+        className="relative z-[2]"
+        contentClassName="items-stretch justify-start overflow-y-auto px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))]">
+        <div className="mx-auto w-full max-w-5xl space-y-6">
+          <GlassCard
+            glowColor={glow}
+            className={`border p-5 sm:p-6 ${
+              isOnline
+                ? 'border-neon-cyan/25 shadow-[0_0_40px_-12px_rgba(0,240,255,0.35)]'
+                : 'border-neon-lime/25 shadow-[0_0_40px_-12px_rgba(132,255,0,0.3)]'
+            }`}>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
               <div className="flex min-w-0 items-center gap-3">
                 <MapIcon className={`shrink-0 ${accent}`} size={28} />
                 <div>
@@ -76,44 +84,29 @@ export function MapSelectScreen({ mode, onContinue, onCancel }: MapSelectScreenP
               </NeonButton>
             </div>
 
-            <GlassCard
-              variant="default"
-              className={`overflow-hidden border-2 ${borderAccent} bg-dark-card/75 p-0 shadow-glass backdrop-blur-md`}>
-              <div
-                className="relative h-36 w-full bg-cover bg-center sm:h-44 md:h-52"
-                style={{ backgroundImage: `url(${selected.previewSrc})` }}>
-                <div className="absolute inset-0 bg-gradient-to-t from-dark-darker via-dark-darker/50 to-transparent" />
-                <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5">
-                  <p className="font-display text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400">
-                    Selected arena
-                  </p>
-                  <h2 className="font-display text-xl font-black text-white sm:text-2xl">
-                    {selected.name}
-                  </h2>
-                  <p className="font-display text-sm text-neon-yellow/90">{selected.theme}</p>
-                  <p className="mt-0.5 font-display text-xs text-gray-400">{selected.biome}</p>
-                </div>
-              </div>
-            </GlassCard>
-
-            <div>
-              <p className="mb-2 text-center font-display text-xs uppercase tracking-wider text-gray-400">
-                All arenas
+            <div className="mt-6 border-t border-white/10 pt-5">
+              <p className="mb-3 text-center font-display text-xs uppercase tracking-wider text-gray-400">
+                Select map
               </p>
-              <MapPickerGrid value={mapId} onChange={setMapId} variant={variant} />
+              <MapPickerGrid
+                value={mapId}
+                onChange={setMapId}
+                variant={variant}
+                reduceMotion={reduceMotion}
+              />
             </div>
+          </GlassCard>
 
-            <div className="flex flex-col justify-center gap-3 pb-4 sm:flex-row">
-              <NeonButton variant="secondary" onClick={onCancel}>
-                Cancel
-              </NeonButton>
-              <NeonButton variant="primary" size="lg" onClick={() => onContinue(mapId)}>
-                {isOnline ? 'Find match' : 'Continue'}
-              </NeonButton>
-            </div>
+          <div className="flex flex-col justify-center gap-3 pb-4 sm:flex-row">
+            <NeonButton variant="secondary" onClick={onCancel}>
+              Cancel
+            </NeonButton>
+            <NeonButton variant="primary" size="lg" onClick={() => onContinue(mapId)}>
+              {isOnline ? 'Find match' : 'Continue'}
+            </NeonButton>
           </div>
-        </ScreenFrame>
-      </div>
+        </div>
+      </ScreenFrame>
     </motion.div>
   );
 }

@@ -3,12 +3,39 @@ import type { CharacterId } from './game/charactersCatalog';
 export type ScreenState =
   | 'loading'
   | 'menu'
-  | 'map_select_online'
-  | 'map_select_local'
+  | 'map_select'
   | 'matchmaking'
   | 'local2p_setup'
   | 'game'
   | 'victory';
+
+/** Arena ids aligned with `public/maps/*` and `game/maps.ts`. */
+export type MapId =
+  | 'birch_night_glade'
+  | 'midnight_grove'
+  | 'cavern_glow'
+  | 'golden_canopy'
+  | 'lakeside_clearing'
+  | 'forest_trail'
+  | 'skyline_grove'
+  | 'mountain_highway'
+  | 'alpine_dawn'
+  | 'pine_ridge_deck';
+
+export interface MapDefinition {
+  id: MapId;
+  name: string;
+  theme: string;
+  biome: string;
+  previewSrc: string;
+  backgroundSrc: string;
+  overlayTint: string;
+  /** Extra average wind speed on this map (0–3 typical). */
+  windBias?: number;
+}
+
+/** Character pose for sticker lean / charge feedback. */
+export type PlayerStance = 'standing' | 'crouching' | 'prone' | 'jumping';
 
 /** Throwable visuals aligned to public/art/weapons-ref.png (+ launcher). */
 export type ProjectileStyle =
@@ -65,54 +92,4 @@ export interface Local2pLoadout {
   p1WeaponId: string;
   p2CharacterId: CharacterId;
   p2WeaponId: string;
-  mapId: MapId;
-}
-
-export type MapId =
-  | 'birch_night_glade'
-  | 'cavern_glow'
-  | 'golden_canopy'
-  | 'lakeside_clearing'
-  | 'skyline_grove'
-  | 'mountain_highway'
-  | 'midnight_grove'
-  | 'alpine_dawn'
-  | 'forest_trail'
-  | 'pine_ridge_deck';
-
-export interface MapDefinition {
-  id: MapId;
-  name: string;
-  theme: string;
-  biome: string;
-  /** Web-served image for card previews. */
-  previewSrc: string;
-  /** Web-served image used by battlefield backdrop. */
-  backgroundSrc: string;
-  overlayTint?: string;
-  windBias?: number;
-  /**
-   * Projectile / miss ground plane in arena percent Y (down = larger).
-   * Omit to use engine default; tune per map art so hits match the painted floor.
-   */
-  groundYPercent?: number;
-  /**
-   * Added to `groundYPercent` for character foot anchor (same plane as physics by default).
-   * Negative nudges feet slightly above the collision line if art needs it.
-   */
-  characterFeetYOffsetFromGroundPercent?: number;
-}
-
-export interface TurnTimerConfig {
-  durationSec: number;
-}
-
-export type PlayerStance = 'standing' | 'jumping' | 'crouching' | 'prone';
-
-export interface PlayerMovementState {
-  x: number;
-  yOffset: number;
-  vy: number;
-  grounded: boolean;
-  stance: PlayerStance;
 }

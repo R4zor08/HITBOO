@@ -1,5 +1,3 @@
-import type { MatchExtendedStats } from './matchStatsTypes';
-
 export type MatchWinner = 'player' | 'enemy';
 export type MatchMode = 'standard' | 'practice' | 'local2p';
 
@@ -18,8 +16,6 @@ export interface MatchResult {
   turns: number;
   player: MatchSideResult;
   enemy: MatchSideResult;
-  /** Optional richer stats for results / debug */
-  extended?: MatchExtendedStats;
 }
 
 export interface MatchRewardResult {

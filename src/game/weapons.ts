@@ -1,6 +1,6 @@
 import type { Weapon } from '../types';
 import type { HitBowDifficulty } from './difficulty';
-import { getSkillBehavior } from '../config/skillBehaviorConfig';
+import { getSkillBehavior } from './skillBehaviorConfig';
 import { PLAYABLE_WEAPON_PRESETS, WEAPONS_CATALOG, catalogEntryToWeapon } from './weaponsCatalog';
 
 /** Full sheet-backed loadout presets (balanced via physics tiers in catalog). */
@@ -28,18 +28,19 @@ export function getWeaponById(id: string): Weapon {
  */
 export function pickEnemyWeaponId(
   tier: HitBowDifficulty,
-  cooldownUntilById: Record<string, number>,
-  now: number
+  now: number,
+  /** Monotonic time (ms) when weapon `id` is off cooldown for this shooter slot. */
+  readyAt: (weaponId: string) => number
 ): string {
   const order: string[] =
     tier === 'hard'
       ? ['stone_hammer', 'energy_slicer', 'basic_arrow_kit', 'sharpened_log']
       : tier === 'casual'
-        ? ['sharpened_log', 'basic_arrow_kit', 'stone_hammer']
-        : ['basic_arrow_kit', 'sharpened_log', 'stone_hammer'];
+        ? ['sharpened_log', 'basic_arrow_kit', 'repair_spray', 'stone_hammer']
+        : ['basic_arrow_kit', 'sharpened_log', 'stone_hammer', 'energy_slicer'];
   for (const id of order) {
     const cdMs = getSkillBehavior(id).cooldownMs;
-    if (cdMs <= 0 || now >= (cooldownUntilById[id] ?? 0)) return id;
+    if (cdMs <= 0 || now >= readyAt(id)) return id;
   }
   return order[0] ?? 'basic_arrow_kit';
 }

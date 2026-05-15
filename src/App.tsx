@@ -4,6 +4,7 @@ import { HitBowProgressProvider } from './context/HitBowProgressContext';
 import type { MatchResult } from './game/matchResult';
 import { appendMatchHistory } from './game/matchHistory';
 import type { Local2pLoadout, MapId, ScreenState } from './types';
+import { DEFAULT_MAP_ID } from './game/maps';
 import { LoadingScreen } from './pages/LoadingScreen';
 import { Local2pPrematchFlow } from './pages/Local2pPrematchFlow';
 import { MainMenu } from './pages/MainMenu';
@@ -11,7 +12,6 @@ import { MapSelectScreen } from './pages/MapSelectScreen';
 import { MatchmakingScreen } from './pages/MatchmakingScreen';
 import { GameScreen, type GameMode } from './pages/GameScreen';
 import { VictoryScreen } from './pages/VictoryScreen';
-import { DEFAULT_MAP_ID } from './game/maps';
 
 export function App() {
   const [currentScreen, setCurrentScreen] = useState<ScreenState>('loading');
@@ -19,13 +19,13 @@ export function App() {
   const [lastMatchResult, setLastMatchResult] = useState<MatchResult | null>(null);
   const [gameMode, setGameMode] = useState<GameMode>('standard');
   const [gameSessionId, setGameSessionId] = useState(0);
-  const [selectedMapId, setSelectedMapId] = useState<MapId>(DEFAULT_MAP_ID);
   const [local2pLoadout, setLocal2pLoadout] = useState<Local2pLoadout | null>(
     null
   );
-  /** Arena picked on the local map screen before loadout wizard. */
-  const [local2pArenaMapId, setLocal2pArenaMapId] =
-    useState<MapId>(DEFAULT_MAP_ID);
+  const [sessionMapId, setSessionMapId] = useState<MapId>(DEFAULT_MAP_ID);
+  const [mapSelectMode, setMapSelectMode] = useState<'online' | 'local2p'>(
+    'online'
+  );
 
   const clearLocal2pSession = () => {
     setLocal2pLoadout(null);
@@ -40,35 +40,25 @@ export function App() {
     setCurrentScreen('victory');
   };
 
-  const goPlayNowMapSelect = () => {
+  const goMapSelectOnline = () => {
+    setMapSelectMode('online');
+    setCurrentScreen('map_select');
+  };
+
+  const goMapSelectLocal2p = () => {
+    setMapSelectMode('local2p');
+    setCurrentScreen('map_select');
+  };
+
+  const startStandardFromMatchmaking = () => {
     setGameMode('standard');
-    setCurrentScreen('map_select_online');
-  };
-
-  const confirmOnlineMapAndQueue = (mapId: MapId) => {
-    setSelectedMapId(mapId);
-    setCurrentScreen('matchmaking');
-  };
-
-  const goLocalMapSelect = () => {
-    setCurrentScreen('map_select_local');
-  };
-
-  const confirmLocalMapAndSetup = (mapId: MapId) => {
-    setLocal2pArenaMapId(mapId);
-    setCurrentScreen('local2p_setup');
-  };
-
-  const startStandardFromMatchmaking = (mapId: MapId) => {
-    setGameMode('standard');
-    setSelectedMapId(mapId);
     setGameSessionId((id) => id + 1);
     setCurrentScreen('game');
   };
 
   const startPractice = () => {
     setGameMode('practice');
-    setSelectedMapId(DEFAULT_MAP_ID);
+    setSessionMapId(DEFAULT_MAP_ID);
     setGameSessionId((id) => id + 1);
     setCurrentScreen('game');
   };
@@ -82,24 +72,35 @@ export function App() {
     }
   };
 
+  const goLocal2pSetup = () => {
+    setCurrentScreen('local2p_setup');
+  };
+
+  const handleMapSelected = (mapId: MapId) => {
+    setSessionMapId(mapId);
+    if (mapSelectMode === 'local2p') {
+      goLocal2pSetup();
+    } else {
+      setGameMode('standard');
+      setCurrentScreen('matchmaking');
+    }
+  };
 
   const startLocal2pFromWizard = (loadout: Local2pLoadout) => {
     setLocal2pLoadout(loadout);
     setGameMode('local2p');
-    setSelectedMapId(loadout.mapId);
     setGameSessionId((id) => id + 1);
     setCurrentScreen('game');
   };
 
   const exitToMenu = () => {
     clearLocal2pSession();
-    setLocal2pArenaMapId(DEFAULT_MAP_ID);
     setCurrentScreen('menu');
   };
 
   return (
     <HitBowProgressProvider>
-      <div className="flex min-h-dvh w-full flex-col bg-dark-darker text-white overflow-hidden font-sans selection:bg-neon-cyan/30">
+      <div className="w-full h-screen bg-dark-darker text-white overflow-hidden font-sans selection:bg-neon-cyan/30">
         <AnimatePresence mode="sync">
           {currentScreen === 'loading' && (
             <LoadingScreen
@@ -111,26 +112,17 @@ export function App() {
           {currentScreen === 'menu' && (
             <MainMenu
               key="menu"
-              onPlay={goPlayNowMapSelect}
+              onPlay={goMapSelectOnline}
               onStartPractice={startPractice}
-              onStartLocal2p={goLocalMapSelect}
+              onStartLocal2p={goMapSelectLocal2p}
             />
           )}
 
-          {currentScreen === 'map_select_online' && (
+          {currentScreen === 'map_select' && (
             <MapSelectScreen
-              key="map_select_online"
-              mode="online"
-              onContinue={confirmOnlineMapAndQueue}
-              onCancel={() => setCurrentScreen('menu')}
-            />
-          )}
-
-          {currentScreen === 'map_select_local' && (
-            <MapSelectScreen
-              key="map_select_local"
-              mode="local2p"
-              onContinue={confirmLocalMapAndSetup}
+              key={`map_select-${mapSelectMode}`}
+              mode={mapSelectMode === 'local2p' ? 'local2p' : 'online'}
+              onContinue={handleMapSelected}
               onCancel={() => setCurrentScreen('menu')}
             />
           )}
@@ -138,16 +130,16 @@ export function App() {
           {currentScreen === 'matchmaking' && (
             <MatchmakingScreen
               key="matchmaking"
-              mapId={selectedMapId}
+              mapId={sessionMapId}
               onMatchFound={startStandardFromMatchmaking}
-              onCancel={() => setCurrentScreen('map_select_online')}
+              onCancel={() => setCurrentScreen('menu')}
             />
           )}
 
           {currentScreen === 'local2p_setup' && (
             <Local2pPrematchFlow
-              key={`local2p_setup-${local2pArenaMapId}`}
-              presetMapId={local2pArenaMapId}
+              key="local2p_setup"
+              mapId={sessionMapId}
               onComplete={startLocal2pFromWizard}
               onCancel={exitToMenu}
             />
@@ -157,7 +149,7 @@ export function App() {
             <GameScreen
               key={`game-${gameSessionId}`}
               gameMode={gameMode}
-              mapId={selectedMapId}
+              mapId={sessionMapId}
               local2pLoadout={
                 gameMode === 'local2p' ? local2pLoadout : undefined
               }
@@ -181,14 +173,6 @@ export function App() {
               }
               onMainMenu={exitToMenu}
               onPlayAgain={handlePlayAgain}
-              onChangeMap={() => {
-                if (gameMode === 'local2p') {
-                  setCurrentScreen('map_select_local');
-                } else {
-                  setCurrentScreen('map_select_online');
-                }
-              }}
-              onChangeMode={() => setCurrentScreen('menu')}
             />
           )}
         </AnimatePresence>

@@ -6,12 +6,12 @@ export const WIND_SPEED_TO_ACCEL = 0.0045;
 export const POWER_TO_VELOCITY = 0.3;
 export const HIT_RADIUS = 5;
 export const GROUND_Y = 90;
-export const OFFSCREEN_X_MIN = -20;
-export const OFFSCREEN_X_MAX = 120;
+export const OFFSCREEN_X_MIN = -10;
+export const OFFSCREEN_X_MAX = 110;
 export const MAX_SIM_STEPS = 2500;
 
-export const P1_POS = { x: 20, y: 70 };
-export const P2_POS = { x: 80, y: 70 };
+export const P1_POS = { x: 15, y: 70 };
+export const P2_POS = { x: 85, y: 70 };
 export const PROJECTILE_START_Y_OFFSET = -5;
 
 export type WindDirection = 'left' | 'right';
@@ -48,23 +48,14 @@ export function initialVelocity(
 
 export function simulateStep(
   body: PhysicsBody,
-  windAcceleration: number,
-  gravityScale = 1
+  windAcceleration: number
 ): PhysicsBody {
   return {
     x: body.x + body.vx,
     y: body.y + body.vy,
     vx: body.vx + windAcceleration,
-    vy: body.vy + GRAVITY_PER_FRAME * gravityScale
+    vy: body.vy + GRAVITY_PER_FRAME
   };
-}
-
-/** Character sticker foot line in arena percent Y (matches physics floor + optional map tweak). */
-export function characterFeetYPercent(
-  groundYPercent: number,
-  feetOffsetPercent = 0
-): number {
-  return groundYPercent + feetOffsetPercent;
 }
 
 export interface ShotParams {
@@ -78,8 +69,6 @@ export interface ShotParams {
   startY: number;
   targetX: number;
   targetY: number;
-  /** Miss when trajectory Y exceeds this (percent). Defaults to {@link GROUND_Y}. */
-  groundY?: number;
 }
 
 export type ShotSimResult =
@@ -87,7 +76,6 @@ export type ShotSimResult =
   | { outcome: 'miss'; reason: 'ground' | 'offscreen' };
 
 export function simulateShotUntilEnd(params: ShotParams): ShotSimResult {
-  const gy = params.groundY ?? GROUND_Y;
   const wind = windAccelPerFrame(params.windSpeed, params.windDirection);
   const v0 = initialVelocity(
     params.power,
@@ -104,10 +92,10 @@ export function simulateShotUntilEnd(params: ShotParams): ShotSimResult {
   for (let i = 0; i < MAX_SIM_STEPS; i++) {
     body = simulateStep(body, wind);
     const { x, y } = body;
-    if (y > gy || x < OFFSCREEN_X_MIN || x > OFFSCREEN_X_MAX) {
+    if (y > GROUND_Y || x < OFFSCREEN_X_MIN || x > OFFSCREEN_X_MAX) {
       return {
         outcome: 'miss',
-        reason: y > gy ? 'ground' : 'offscreen'
+        reason: y > GROUND_Y ? 'ground' : 'offscreen'
       };
     }
     const dist = Math.hypot(x - params.targetX, y - params.targetY);
@@ -129,7 +117,6 @@ export function sampleTrajectoryPoints(
   maxPoints = 80,
   sampleEvery = 3
 ): PointPct[] {
-  const gy = params.groundY ?? GROUND_Y;
   const wind = windAccelPerFrame(params.windSpeed, params.windDirection);
   const v0 = initialVelocity(
     params.power,
@@ -148,19 +135,16 @@ export function sampleTrajectoryPoints(
     body = simulateStep(body, wind);
     const { x, y } = body;
     if (i % sampleEvery === 0) pts.push({ x, y });
-    if (y > gy || x < OFFSCREEN_X_MIN || x > OFFSCREEN_X_MAX) break;
+    if (y > GROUND_Y || x < OFFSCREEN_X_MIN || x > OFFSCREEN_X_MAX) break;
     if (pts.length >= maxPoints) break;
   }
   return pts;
 }
 
-/** Arc samples plus last simulated point when ground/offscreen is reached (for impact marker). */
-export function sampleTrajectoryWithTerminal(
-  params: Omit<ShotParams, 'targetX' | 'targetY'>,
-  maxPoints = 100,
-  sampleEvery = 2
-): { points: PointPct[]; terminal: PointPct } {
-  const gy = params.groundY ?? GROUND_Y;
+/** First ground intersection or offscreen exit for aim landing preview (percent coords). */
+export function estimateGroundLandingPoint(
+  params: Omit<ShotParams, 'targetX' | 'targetY'>
+): PointPct {
   const wind = windAccelPerFrame(params.windSpeed, params.windDirection);
   const v0 = initialVelocity(
     params.power,
@@ -174,17 +158,21 @@ export function sampleTrajectoryWithTerminal(
     vx: v0.vx,
     vy: v0.vy
   };
-  const pts: PointPct[] = [{ x: body.x, y: body.y }];
-  let terminal: PointPct = { x: body.x, y: body.y };
+  let prev = { ...body };
   for (let i = 0; i < MAX_SIM_STEPS; i++) {
+    prev = { ...body };
     body = simulateStep(body, wind);
-    const { x, y } = body;
-    terminal = { x, y };
-    if (i % sampleEvery === 0) pts.push({ x, y });
-    if (y > gy || x < OFFSCREEN_X_MIN || x > OFFSCREEN_X_MAX) break;
-    if (pts.length >= maxPoints) break;
+    if (body.y > GROUND_Y) {
+      const dy = body.y - prev.y;
+      const t = dy <= 0.0001 ? 1 : (GROUND_Y - prev.y) / dy;
+      const ix = prev.x + t * (body.x - prev.x);
+      return { x: ix, y: GROUND_Y };
+    }
+    if (body.x < OFFSCREEN_X_MIN || body.x > OFFSCREEN_X_MAX) {
+      return { x: body.x, y: body.y };
+    }
   }
-  return { points: pts, terminal };
+  return { x: body.x, y: body.y };
 }
 
 export function computeHitDamage(
@@ -197,20 +185,6 @@ export function computeHitDamage(
 
 /** Sticker hit regions vs foot anchor (percent coords; Y increases downward). */
 export type HitBodyZone = 'head' | 'torso' | 'legs';
-export type HitboxStance = 'standing' | 'jumping' | 'crouching' | 'prone';
-
-export function hitRadiusForStance(stance: HitboxStance): number {
-  switch (stance) {
-    case 'prone':
-      return HIT_RADIUS * 0.65;
-    case 'crouching':
-      return HIT_RADIUS * 0.78;
-    case 'jumping':
-      return HIT_RADIUS * 0.9;
-    default:
-      return HIT_RADIUS;
-  }
-}
 
 /**
  * Classify impact relative to defender anchor. Positive dy means impact above
@@ -270,7 +244,6 @@ export interface AimSolution {
 
 /** Closest approach to target along trajectory; 0 if hit. */
 export function measureShotToTarget(params: ShotParams): number {
-  const gy = params.groundY ?? GROUND_Y;
   const wind = windAccelPerFrame(params.windSpeed, params.windDirection);
   const v0 = initialVelocity(
     params.power,
@@ -288,7 +261,7 @@ export function measureShotToTarget(params: ShotParams): number {
   for (let i = 0; i < MAX_SIM_STEPS; i++) {
     body = simulateStep(body, wind);
     const { x, y } = body;
-    if (y > gy || x < OFFSCREEN_X_MIN || x > OFFSCREEN_X_MAX) {
+    if (y > GROUND_Y || x < OFFSCREEN_X_MIN || x > OFFSCREEN_X_MAX) {
       break;
     }
     const d = Math.hypot(x - params.targetX, y - params.targetY);

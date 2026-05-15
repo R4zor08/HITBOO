@@ -1,12 +1,14 @@
-import { useEffect, useState, useRef, type ReactNode } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { ProjectileStyle } from '../../types';
+import type { MapDefinition, ProjectileStyle } from '../../types';
+import { getMapFloorTheme } from '../../game/mapFloorTheme';
 import type { CharacterId } from '../../game/charactersCatalog';
 import { ProjectileGraphic } from './projectiles/ProjectileGraphic';
 import { CharacterSticker } from './CharacterSticker';
 import type { WindDirection } from '../../game/artilleryPhysics';
 import {
   GROUND_Y,
+  HIT_RADIUS,
   OFFSCREEN_X_MAX,
   OFFSCREEN_X_MIN,
   P1_POS,
@@ -14,13 +16,10 @@ import {
   PROJECTILE_START_Y_OFFSET,
   computeHitDamage,
   computeHitDamageWithZone,
-  hitRadiusForStance,
   initialVelocity,
   simulateStep,
   windAccelPerFrame
 } from '../../game/artilleryPhysics';
-import type { MapId, PlayerStance } from '../../types';
-import { getMapById } from '../../game/maps';
 
 export type ShotResult =
   | {
@@ -28,19 +27,10 @@ export type ShotResult =
       damage: number;
       impactX: number;
       impactY: number;
+      /** Who fired this shot (snapshot when the volley started). */
       shooterWasPlayer: boolean;
     }
-  | {
-      outcome: 'miss';
-      shooterWasPlayer: boolean;
-      /** Projectile reached target during damage immunity — no damage, softer feedback. */
-      blockedByInvuln?: boolean;
-      impactX?: number;
-      impactY?: number;
-      missKind?: 'ground' | 'offscreen';
-      /** Passed closest-approach band without scoring a hit. */
-      nearMiss?: boolean;
-    };
+  | { outcome: 'miss'; shooterWasPlayer: boolean };
 
 export interface FirePayload {
   power: number;
@@ -49,41 +39,10 @@ export interface FirePayload {
   velocityScale: number;
   baseDamage: number;
   projectileStyle: ProjectileStyle;
-  /** Who fired; required for real-time multi-shot. */
-  shooterWasPlayer: boolean;
-  /** Multiplies arena wind acceleration for this shot (mode × per-weapon). */
-  windEffectMultiplier?: number;
-  /** Multiplies gravity for this shot (per-weapon arc identity). */
-  gravityScale?: number;
 }
 
-type SimShot = {
-  id: string;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  windAccel: number;
-  gravityScale: number;
-  shooterWasPlayer: boolean;
-  projectileStyle: ProjectileStyle;
-  shotPower: number;
-  shotDamageBase: number;
-  /** Minimum distance to defender hurtbox this flight (for near-miss). */
-  closestDefenderDist: number;
-};
-
-export type ProjectileVisual = {
-  id: string;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  style: ProjectileStyle;
-  shooterIsPlayer: boolean;
-};
-
 interface BattlefieldProps {
+  isPlayerTurn: boolean;
   windSpeed: number;
   windDirection: WindDirection;
   playerHp: number;
@@ -92,41 +51,29 @@ interface BattlefieldProps {
   onShotResult: (result: ShotResult) => void;
   reduceMotion?: boolean;
   playerAccentHex?: string;
+  /** Concept-sheet sticker id per side (defaults handled in CharacterSticker). */
   playerCharacterId?: CharacterId | null;
   enemyCharacterId?: CharacterId | null;
   onReady?: () => void;
+  /** Local 2P: scale damage by impact region vs defender anchor. */
   bodyPartDamage?: boolean;
-  playerStickerAim?: { isCharging: boolean; aimPullDeg: number } | null;
-  enemyStickerAim?: { isCharging: boolean; aimPullDeg: number } | null;
-  mapId: MapId;
-  playerPos: { x: number; y: number };
-  enemyPos: { x: number; y: number };
-  playerStance: PlayerStance;
-  enemyStance: PlayerStance;
-  /** Miss / ground collision plane (percent Y). */
-  groundY?: number;
-  /** Brief red tint on P1 sticker after damage. */
-  playerHitTint?: boolean;
-  /** Brief red tint on P2 sticker after damage. */
-  enemyHitTint?: boolean;
-  /** `performance.now()` until which P1 cannot be damaged by hits (exclusive of UI tint). */
-  playerDamageImmuneUntil?: number;
-  /** `performance.now()` until which P2 / enemy cannot be damaged. */
-  enemyDamageImmuneUntil?: number;
-  /** Wrap playfield (not map backdrop) for camera motion from parent. */
-  wrapDynamic?: (playfield: ReactNode) => ReactNode;
-  /** When true, projectiles stop advancing until resumed. */
-  simPaused?: boolean;
-  /** Live count of simulated shots (for HUD danger hint). */
-  onProjectileCount?: (n: number) => void;
-  /** Throttled near-miss (non-damage) for HUD / SFX. */
-  onNearMiss?: (payload: {
-    shooterWasPlayer: boolean;
-    margin: number;
-  }) => void;
+  /** Bowmasters-style pull / charge feedback on stickers. */
+  aimFeedback?: {
+    playerPullDeg: number;
+    enemyPullDeg: number;
+    chargingSide: 'player' | 'enemy' | null;
+    chargePowerPct: number;
+    playerLaunchNonce: number;
+    enemyLaunchNonce: number;
+  };
+  /** Injected under projectiles (trajectory, drag-to-aim hit layer). */
+  hudOverlay?: React.ReactNode;
+  /** Selected arena — background art and floor tint. */
+  map?: MapDefinition;
 }
 
 export function Battlefield({
+  isPlayerTurn,
   windSpeed,
   windDirection,
   playerHp,
@@ -139,25 +86,25 @@ export function Battlefield({
   enemyCharacterId = null,
   onReady,
   bodyPartDamage = false,
-  playerStickerAim = null,
-  enemyStickerAim = null,
-  mapId,
-  playerPos,
-  enemyPos,
-  playerStance,
-  enemyStance,
-  groundY: groundYProp,
-  playerHitTint = false,
-  enemyHitTint = false,
-  playerDamageImmuneUntil = 0,
-  enemyDamageImmuneUntil = 0,
-  wrapDynamic,
-  simPaused = false,
-  onProjectileCount,
-  onNearMiss
+  aimFeedback,
+  hudOverlay,
+  map
 }: BattlefieldProps) {
-  const effectiveGroundY = groundYProp ?? GROUND_Y;
-  const [projectiles, setProjectiles] = useState<ProjectileVisual[]>([]);
+  const floorTheme = getMapFloorTheme(map?.id ?? 'birch_night_glade');
+  const [projectile, setProjectile] = useState<{
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    active: boolean;
+  } | null>(null);
+  const shotVisualRef = useRef<{
+    style: ProjectileStyle;
+    shooterIsPlayer: boolean;
+  }>({
+    style: 'basic_arrow',
+    shooterIsPlayer: true
+  });
   const [hitEffect, setHitEffect] = useState<{
     x: number;
     y: number;
@@ -165,341 +112,218 @@ export function Battlefield({
     damage: number;
   } | null>(null);
   const [cameraShake, setCameraShake] = useState(false);
-  const [hitFlash, setHitFlash] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const rafRef = useRef<number>();
-  const shotsRef = useRef<Map<string, SimShot>>(new Map());
-  const shotSeqRef = useRef(0);
-  const loopRunningRef = useRef(false);
-  const cancelledUnmountRef = useRef(false);
+  const requestRef = useRef<number>();
+  const physicsState = useRef({
+    x: 0,
+    y: 0,
+    vx: 0,
+    vy: 0,
+    active: false
+  });
+  const windAccelRef = useRef(0);
+  const shotPowerRef = useRef(0);
+  const shotDamageBaseRef = useRef(0);
 
-  const p1Pos = playerPos ?? P1_POS;
-  const p2Pos = enemyPos ?? P2_POS;
-  const map = getMapById(mapId);
+  const p1Pos = P1_POS;
+  const p2Pos = P2_POS;
+  const af = aimFeedback ?? {
+    playerPullDeg: 0,
+    enemyPullDeg: 0,
+    chargingSide: null as 'player' | 'enemy' | null,
+    chargePowerPct: 0,
+    playerLaunchNonce: 0,
+    enemyLaunchNonce: 0
+  };
   const onResultRef = useRef(onShotResult);
   onResultRef.current = onShotResult;
-
-  const arenaRef = useRef({
-    p1: p1Pos,
-    p2: p2Pos,
-    s1: playerStance,
-    s2: enemyStance,
-    groundY: effectiveGroundY
-  });
-  arenaRef.current = {
-    p1: p1Pos,
-    p2: p2Pos,
-    s1: playerStance,
-    s2: enemyStance,
-    groundY: effectiveGroundY
-  };
-
-  const bodyPartDamageRef = useRef(bodyPartDamage);
-  bodyPartDamageRef.current = bodyPartDamage;
-  const reduceMotionRef = useRef(reduceMotion);
-  reduceMotionRef.current = reduceMotion;
-  const playerImmuneUntilRef = useRef(0);
-  const enemyImmuneUntilRef = useRef(0);
-  playerImmuneUntilRef.current = playerDamageImmuneUntil;
-  enemyImmuneUntilRef.current = enemyDamageImmuneUntil;
 
   useEffect(() => {
     onReady?.();
   }, [onReady]);
 
   useEffect(() => {
-    if (simPaused) return;
-    if (shotsRef.current.size === 0) return;
-    if (loopRunningRef.current) return;
-    loopRunningRef.current = true;
-    rafRef.current = requestAnimationFrame(runStep);
-  }, [simPaused]);
-
-  const [groundDust, setGroundDust] = useState<
-    Array<{ id: string; x: number; y: number }>
-  >([]);
-  const onProjectileCountRef = useRef(onProjectileCount);
-  onProjectileCountRef.current = onProjectileCount;
-  const simPausedRef = useRef(simPaused);
-  simPausedRef.current = simPaused;
-
-  const onNearMissRef = useRef(onNearMiss);
-  onNearMissRef.current = onNearMiss;
-
-  const pushVisuals = () => {
-    const list: ProjectileVisual[] = [];
-    for (const s of shotsRef.current.values()) {
-      list.push({
-        id: s.id,
-        x: s.x,
-        y: s.y,
-        vx: s.vx,
-        vy: s.vy,
-        style: s.projectileStyle,
-        shooterIsPlayer: s.shooterWasPlayer
-      });
-    }
-    setProjectiles(list);
-    onProjectileCountRef.current?.(list.length);
-  };
-
-  const runStep = () => {
-    if (cancelledUnmountRef.current) return;
-    if (simPausedRef.current) {
-      loopRunningRef.current = false;
-      return;
-    }
-    const gY = arenaRef.current.groundY;
-    const NEAR_MISS_PAD = 3.8;
-    const pendingMiss: Array<{
-      id: string;
-      shooterWasPlayer: boolean;
-      blockedByInvuln?: boolean;
-      impactX?: number;
-      impactY?: number;
-      missKind?: 'ground' | 'offscreen';
-      closestDefenderDist?: number;
-      defenderHitRadius?: number;
-    }> = [];
-    const pendingHit: Array<{
-      id: string;
-      shooterWasPlayer: boolean;
-      damage: number;
-      impactX: number;
-      impactY: number;
-      fxX: number;
-      fxY: number;
-    }> = [];
-
-    for (const [id, s] of shotsRef.current) {
-      const next = simulateStep(
-        { x: s.x, y: s.y, vx: s.vx, vy: s.vy },
-        s.windAccel,
-        s.gravityScale
-      );
-      s.x = next.x;
-      s.y = next.y;
-      s.vx = next.vx;
-      s.vy = next.vy;
-      const { x, y } = next;
-
-      const shotByPlayer = s.shooterWasPlayer;
-      const def = shotByPlayer ? arenaRef.current.p2 : arenaRef.current.p1;
-      const stance = shotByPlayer ? arenaRef.current.s2 : arenaRef.current.s1;
-      const hitR = hitRadiusForStance(stance);
-      const distDef = Math.hypot(x - def.x, y - def.y);
-      s.closestDefenderDist = Math.min(s.closestDefenderDist, distDef);
-
-      if (y > gY || x < OFFSCREEN_X_MIN || x > OFFSCREEN_X_MAX) {
-        const kind: 'ground' | 'offscreen' = y > gY ? 'ground' : 'offscreen';
-        const ix =
-          kind === 'ground'
-            ? x
-            : Math.max(OFFSCREEN_X_MIN, Math.min(OFFSCREEN_X_MAX, x));
-        const iy = kind === 'ground' ? gY : y;
-        pendingMiss.push({
-          id,
-          shooterWasPlayer: s.shooterWasPlayer,
-          impactX: ix,
-          impactY: iy,
-          missKind: kind,
-          closestDefenderDist: s.closestDefenderDist,
-          defenderHitRadius: hitR
-        });
-        continue;
-      }
-
-      if (distDef < hitR) {
-        const now = typeof performance !== 'undefined' ? performance.now() : 0;
-        const targetImmuneUntil = shotByPlayer
-          ? enemyImmuneUntilRef.current
-          : playerImmuneUntilRef.current;
-        if (now < targetImmuneUntil) {
-          pendingMiss.push({
-            id,
-            shooterWasPlayer: shotByPlayer,
-            blockedByInvuln: true,
-            closestDefenderDist: s.closestDefenderDist,
-            defenderHitRadius: hitR
-          });
-          continue;
-        }
-        const damage = bodyPartDamageRef.current
-          ? computeHitDamageWithZone(
-              s.shotDamageBase,
-              s.shotPower,
-              x,
-              y,
-              def.x,
-              def.y
-            )
-          : computeHitDamage(s.shotDamageBase, s.shotPower);
-        pendingHit.push({
-          id,
-          shooterWasPlayer: shotByPlayer,
-          damage,
-          impactX: x,
-          impactY: y,
-          fxX: def.x,
-          fxY: def.y
-        });
-      }
-    }
-
-    for (const m of pendingMiss) {
-      shotsRef.current.delete(m.id);
-      const delayMs = m.blockedByInvuln ? 120 : 500;
-      if (!m.blockedByInvuln && m.impactX != null && m.impactY != null && !reduceMotionRef.current) {
-        const dustId = `dust-${m.id}-${Date.now()}`;
-        setGroundDust((prev) =>
-          [...prev, { id: dustId, x: m.impactX!, y: m.impactY! }].slice(-8)
-        );
-        window.setTimeout(() => {
-          setGroundDust((prev) => prev.filter((d) => d.id !== dustId));
-        }, 520);
-      }
-      setTimeout(() => {
-        if (!cancelledUnmountRef.current) {
-          const r = m.defenderHitRadius ?? hitRadiusForStance('standing');
-          const closest = m.closestDefenderDist ?? 1e9;
-          const nearMiss =
-            !m.blockedByInvuln &&
-            closest < r + NEAR_MISS_PAD &&
-            closest > r - 0.02;
-          onResultRef.current({
-            outcome: 'miss',
-            shooterWasPlayer: m.shooterWasPlayer,
-            blockedByInvuln: m.blockedByInvuln,
-            impactX: m.impactX,
-            impactY: m.impactY,
-            missKind: m.missKind,
-            nearMiss
-          });
-          if (nearMiss) {
-            onNearMissRef.current?.({
-              shooterWasPlayer: m.shooterWasPlayer,
-              margin: closest - r
-            });
-          }
-        }
-      }, delayMs);
-    }
-
-    for (const h of pendingHit) {
-      shotsRef.current.delete(h.id);
-      setHitEffect({
-        x: h.fxX,
-        y: h.fxY,
-        active: true,
-        damage: h.damage
-      });
-      setCameraShake(true);
-      if (!reduceMotionRef.current) {
-        setHitFlash(true);
-        setTimeout(() => setHitFlash(false), 140);
-      } else {
-        setHitFlash(true);
-        setTimeout(() => setHitFlash(false), 80);
-      }
-      setTimeout(() => setCameraShake(false), 500);
-      setTimeout(() => setHitEffect(null), 1500);
-      setTimeout(() => {
-        if (!cancelledUnmountRef.current) {
-          onResultRef.current({
-            outcome: 'hit',
-            damage: h.damage,
-            impactX: h.impactX,
-            impactY: h.impactY,
-            shooterWasPlayer: h.shooterWasPlayer
-          });
-        }
-      }, 1000);
-    }
-
-    pushVisuals();
-
-    if (shotsRef.current.size > 0) {
-      if (!simPausedRef.current) {
-        rafRef.current = requestAnimationFrame(runStep);
-      } else {
-        loopRunningRef.current = false;
-      }
-    } else {
-      loopRunningRef.current = false;
-    }
-  };
-
-  const ensureLoop = () => {
-    if (loopRunningRef.current) return;
-    loopRunningRef.current = true;
-    rafRef.current = requestAnimationFrame(runStep);
-  };
-
-  useEffect(() => {
     if (!triggerFire?.timestamp) return;
-    const shotByPlayer = triggerFire.shooterWasPlayer;
+    if (physicsState.current.active) return;
+
+    let cancelled = false;
+    const shotByPlayer = isPlayerTurn;
     const power = triggerFire.power;
     const angle = triggerFire.angle;
     const velocityScale = triggerFire.velocityScale;
     const baseDamage = triggerFire.baseDamage;
 
-    const startX = shotByPlayer ? p1Pos.x : p2Pos.x;
-    const startY =
-      (shotByPlayer ? p1Pos.y : p2Pos.y) + PROJECTILE_START_Y_OFFSET;
-    const facingRight = shotByPlayer;
-    const windMult = triggerFire.windEffectMultiplier ?? 1;
-    const windAccel = windAccelPerFrame(windSpeed * windMult, windDirection);
-    const v0 = initialVelocity(power, angle, facingRight, velocityScale);
-    const id = `${triggerFire.timestamp}-${++shotSeqRef.current}`;
-    const grav = triggerFire.gravityScale ?? 1;
+    shotVisualRef.current = {
+      style: triggerFire.projectileStyle,
+      shooterIsPlayer: isPlayerTurn
+    };
 
-    shotsRef.current.set(id, {
-      id,
+    const startX = isPlayerTurn ? p1Pos.x : p2Pos.x;
+    const startY =
+      (isPlayerTurn ? p1Pos.y : p2Pos.y) + PROJECTILE_START_Y_OFFSET;
+    const facingRight = isPlayerTurn;
+    windAccelRef.current = windAccelPerFrame(windSpeed, windDirection);
+    shotPowerRef.current = power;
+    shotDamageBaseRef.current = baseDamage;
+    const v0 = initialVelocity(power, angle, facingRight, velocityScale);
+    physicsState.current = {
       x: startX,
       y: startY,
       vx: v0.vx,
       vy: v0.vy,
-      windAccel,
-      gravityScale: grav,
-      shooterWasPlayer: shotByPlayer,
-      projectileStyle: triggerFire.projectileStyle,
-      shotPower: power,
-      shotDamageBase: baseDamage,
-      closestDefenderDist: Number.POSITIVE_INFINITY
+      active: true
+    };
+    setProjectile({
+      x: startX,
+      y: startY,
+      vx: v0.vx,
+      vy: v0.vy,
+      active: true
     });
-    pushVisuals();
-    ensureLoop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- enqueue when a new volley is queued
-  }, [triggerFire]);
+
+    const targetX = isPlayerTurn ? p2Pos.x : p1Pos.x;
+    const targetY = isPlayerTurn ? p2Pos.y : p1Pos.y;
+
+    const animateProjectile = () => {
+      if (cancelled || !physicsState.current.active) return;
+      const prev = physicsState.current;
+      const next = simulateStep(
+        {
+          x: prev.x,
+          y: prev.y,
+          vx: prev.vx,
+          vy: prev.vy
+        },
+        windAccelRef.current
+      );
+      physicsState.current = { ...next, active: true };
+      const { x, y } = next;
+      setProjectile({
+        x,
+        y,
+        vx: next.vx,
+        vy: next.vy,
+        active: true
+      });
+
+      if (y > GROUND_Y || x < OFFSCREEN_X_MIN || x > OFFSCREEN_X_MAX) {
+        physicsState.current.active = false;
+        setProjectile(null);
+        if (requestRef.current) cancelAnimationFrame(requestRef.current);
+        setTimeout(() => {
+          if (!cancelled) {
+            onResultRef.current({
+              outcome: 'miss',
+              shooterWasPlayer: shotByPlayer
+            });
+          }
+        }, 500);
+        return;
+      }
+
+      const hitDistance = Math.hypot(x - targetX, y - targetY);
+      if (hitDistance < HIT_RADIUS) {
+        physicsState.current.active = false;
+        setProjectile(null);
+        if (requestRef.current) cancelAnimationFrame(requestRef.current);
+        const damage = bodyPartDamage
+          ? computeHitDamageWithZone(
+              shotDamageBaseRef.current,
+              shotPowerRef.current,
+              x,
+              y,
+              targetX,
+              targetY
+            )
+          : computeHitDamage(
+              shotDamageBaseRef.current,
+              shotPowerRef.current
+            );
+        setHitEffect({
+          x: targetX,
+          y: targetY,
+          active: true,
+          damage
+        });
+        setCameraShake(true);
+        setTimeout(() => setCameraShake(false), 500);
+        setTimeout(() => setHitEffect(null), 1500);
+        setTimeout(() => {
+          if (!cancelled) {
+            onResultRef.current({
+              outcome: 'hit',
+              damage,
+              impactX: x,
+              impactY: y,
+              shooterWasPlayer: shotByPlayer
+            });
+          }
+        }, 1000);
+        return;
+      }
+
+      requestRef.current = requestAnimationFrame(animateProjectile);
+    };
+
+    requestRef.current = requestAnimationFrame(animateProjectile);
+
+    return () => {
+      cancelled = true;
+      physicsState.current.active = false;
+      if (requestRef.current) cancelAnimationFrame(requestRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- snapshot when `triggerFire` updates
+  }, [triggerFire, isPlayerTurn, bodyPartDamage]);
 
   useEffect(() => {
-    cancelledUnmountRef.current = false;
     return () => {
-      cancelledUnmountRef.current = true;
-      shotsRef.current.clear();
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      loopRunningRef.current = false;
+      if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
   }, []);
 
-  const staticBackdrop = (
-    <>
+  const viz = projectile && projectile.active ? shotVisualRef.current : null;
+  const rotDeg =
+    projectile && projectile.active
+      ? Math.atan2(projectile.vy, projectile.vx) * (180 / Math.PI)
+      : 0;
+
+  return (
+    <motion.div
+      ref={containerRef}
+      className="absolute inset-0 overflow-hidden bg-gradient-to-b from-[#1a0a2e] via-[#2d1b4e] to-[#0f0620]"
+      animate={
+        cameraShake
+          ? {
+              x: [-10, 10, -10, 10, 0],
+              y: [-5, 5, -5, 5, 0]
+            }
+          : {}
+      }
+      transition={{ duration: 0.4 }}>
+      {map ? (
+        <>
+          <motion.div
+            key={map.id}
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+            style={{ backgroundImage: `url(${map.backgroundSrc})` }}
+            initial={{ opacity: 0, scale: 1.04 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.65, ease: 'easeOut' }}
+            aria-hidden
+          />
+          <motion.div
+            key={`${map.id}-tint`}
+            className="pointer-events-none absolute inset-0"
+            style={{ background: map.overlayTint }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5 }}
+            aria-hidden
+          />
+        </>
+      ) : null}
       <div
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: `url(${map.backgroundSrc})` }}
-        aria-hidden
-      />
-      <div
-        className="absolute inset-0"
-        style={{ background: map.overlayTint ?? 'transparent' }}
-        aria-hidden
-      />
-      <div
-        className="absolute inset-0 opacity-[0.12] bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,rgba(15,6,32,0.55)_55%,rgba(5,2,14,0.92)_100%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,rgba(15,6,32,0.42)_55%,rgba(5,2,14,0.88)_100%)]"
         aria-hidden
       />
       <div
@@ -507,36 +331,19 @@ export function Battlefield({
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute inset-x-0 z-[2]"
-        style={{
-          top: `${Math.max(0, effectiveGroundY - 4.5)}%`,
-          height: `${Math.min(14, Math.max(3, 100 - effectiveGroundY + 1))}%`,
-          background:
-            'linear-gradient(to bottom, transparent, rgba(255,255,255,0.05))'
-        }}
+        className="pointer-events-none absolute inset-x-0 bottom-[22%] h-px"
+        style={{ backgroundColor: floorTheme.groundLine }}
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute inset-x-0 z-[3] h-[2px] bg-gradient-to-r from-transparent via-white/30 to-transparent shadow-[0_0_12px_rgba(255,255,255,0.15)]"
-        style={{ top: `${effectiveGroundY}%`, transform: 'translateY(-1px)' }}
+        className="pointer-events-none absolute inset-x-0 bottom-[18%] h-[10%] opacity-30"
+        style={{ background: floorTheme.groundBand }}
         aria-hidden
       />
-    </>
-  );
 
-  const playfield = (
-    <motion.div
-      className="absolute inset-0 overflow-hidden pointer-events-none"
-      animate={
-        cameraShake
-          ? reduceMotion
-            ? { x: [-3, 3, 0], y: [-2, 2, 0] }
-            : { x: [-10, 10, -10, 10, 0], y: [-5, 5, -5, 5, 0] }
-          : {}
-      }
-      transition={{ duration: reduceMotion ? 0.22 : 0.4 }}>
       <motion.div
-        className="absolute top-20 right-40 w-32 h-32 rounded-full bg-neon-purple/25 blur-xl"
+        className="absolute top-20 right-40 w-32 h-32 rounded-full blur-xl"
+        style={{ backgroundColor: floorTheme.ambientGlow }}
         animate={
           reduceMotion
             ? { scale: 1, opacity: 0.5 }
@@ -547,7 +354,8 @@ export function Battlefield({
         }
       />
       <motion.div
-        className="absolute top-24 left-28 w-24 h-24 rounded-full bg-neon-cyan/20 blur-xl"
+        className="absolute top-24 left-28 w-24 h-24 rounded-full blur-xl"
+        style={{ backgroundColor: floorTheme.ambientGlow }}
         animate={
           reduceMotion
             ? { scale: 1, opacity: 0.45 }
@@ -556,6 +364,23 @@ export function Battlefield({
         transition={
           reduceMotion ? { duration: 0 } : { duration: 6, repeat: Infinity }
         }
+      />
+
+      {hudOverlay}
+
+      <Platform
+        x={p1Pos.x}
+        y={p1Pos.y + 10}
+        color="cyan"
+        fill={floorTheme.platformFill}
+        reduceMotion={reduceMotion}
+      />
+      <Platform
+        x={p2Pos.x}
+        y={p2Pos.y + 10}
+        color="magenta"
+        fill={floorTheme.platformFill}
+        reduceMotion={reduceMotion}
       />
 
       <CharacterSticker
@@ -567,10 +392,13 @@ export function Battlefield({
         hp={playerHp}
         facingRight={true}
         reduceMotion={reduceMotion}
-        aimPullDeg={playerStickerAim?.aimPullDeg}
-        isCharging={playerStickerAim?.isCharging}
-        stance={playerStance}
-        hitTintActive={playerHitTint}
+        aimPullDeg={af.playerPullDeg}
+        isCharging={af.chargingSide === 'player'}
+        chargePowerPct={
+          af.chargingSide === 'player' ? af.chargePowerPct : 0
+        }
+        launchPulseNonce={af.playerLaunchNonce}
+        isActiveTurn={isPlayerTurn}
       />
 
       <CharacterSticker
@@ -582,96 +410,39 @@ export function Battlefield({
         hp={enemyHp}
         facingRight={false}
         reduceMotion={reduceMotion}
-        aimPullDeg={enemyStickerAim?.aimPullDeg}
-        isCharging={enemyStickerAim?.isCharging}
-        stance={enemyStance}
-        hitTintActive={enemyHitTint}
+        aimPullDeg={af.enemyPullDeg}
+        isCharging={af.chargingSide === 'enemy'}
+        chargePowerPct={
+          af.chargingSide === 'enemy' ? af.chargePowerPct : 0
+        }
+        launchPulseNonce={af.enemyLaunchNonce}
+        isActiveTurn={!isPlayerTurn}
       />
 
-      {projectiles.map((p) => {
-        const rotDeg = Math.atan2(p.vy, p.vx) * (180 / Math.PI);
-        return (
-          <div key={p.id}>
+      {viz && projectile?.active && (
+        <motion.div
+          className="absolute z-40 w-0 h-0"
+          style={{
+            left: `${projectile.x}%`,
+            top: `${projectile.y}%`,
+            transform: `translate(-50%, -50%) rotate(${rotDeg}deg)`,
+            filter: reduceMotion
+              ? undefined
+              : 'drop-shadow(0 0 10px rgba(0,240,255,0.85)) drop-shadow(0 0 22px rgba(255,0,229,0.35))'
+          }}>
+          {!reduceMotion ? (
             <div
-              className="pointer-events-none absolute z-[36]"
-              style={{
-                left: `${p.x}%`,
-                top: `${p.y}%`,
-                transform: 'translate(-50%, -50%)',
-                width: '1.75rem',
-                height: '1.75rem',
-                borderRadius: '9999px',
-                background: p.shooterIsPlayer
-                  ? 'radial-gradient(circle, rgba(0,240,255,0.45), transparent 70%)'
-                  : 'radial-gradient(circle, rgba(255,51,85,0.42), transparent 70%)',
-                filter: 'blur(10px)',
-                opacity: 0.85
-              }}
+              className="pointer-events-none absolute left-1/2 top-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-neon-cyan/25 blur-md scale-x-150"
               aria-hidden
             />
-            {!reduceMotion ? (
-              <div
-                className="pointer-events-none absolute z-[35]"
-                style={{
-                  left: `${p.x}%`,
-                  top: `${p.y}%`,
-                  transform: `translate(-50%, -50%) rotate(${rotDeg}deg) scaleX(1.2)`,
-                  width: '2.25rem',
-                  height: '0.55rem',
-                  borderRadius: '9999px',
-                  background: p.shooterIsPlayer
-                    ? 'linear-gradient(90deg, transparent, rgba(0,240,255,0.35), transparent)'
-                    : 'linear-gradient(90deg, transparent, rgba(255,51,85,0.32), transparent)',
-                  filter: 'blur(6px)',
-                  opacity: 0.55
-                }}
-                aria-hidden
-              />
-            ) : null}
-            <motion.div
-              className="absolute z-40 w-0 h-0"
-              style={{
-                left: `${p.x}%`,
-                top: `${p.y}%`,
-                transform: `translate(-50%, -50%) rotate(${rotDeg}deg)`
-              }}>
-              <div
-                className={
-                  p.shooterIsPlayer
-                    ? 'rounded-full ring-2 ring-neon-cyan/55 ring-offset-2 ring-offset-transparent'
-                    : 'rounded-md ring-2 ring-dashed ring-neon-magenta/60 ring-offset-2 ring-offset-transparent'
-                }
-                style={{ padding: 2 }}>
-                <ProjectileGraphic
-                  style={p.style}
-                  shooterIsPlayer={p.shooterIsPlayer}
-                  accentHex={playerAccentHex}
-                />
-              </div>
-            </motion.div>
-          </div>
-        );
-      })}
-
-      <AnimatePresence>
-        {groundDust.map((d) => (
-          <motion.div
-            key={d.id}
-            className="pointer-events-none absolute z-[38]"
-            style={{
-              left: `${d.x}%`,
-              top: `${d.y}%`,
-              transform: 'translate(-50%, -50%)'
-            }}
-            initial={{ scale: 0.4, opacity: 0.85 }}
-            animate={{ scale: 1.5, opacity: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.45, ease: 'easeOut' }}>
-            <div className="h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-stone-400/50 blur-md" />
-            <div className="absolute inset-0 h-6 w-6 rounded-full bg-amber-900/35 blur-sm" />
-          </motion.div>
-        ))}
-      </AnimatePresence>
+          ) : null}
+          <ProjectileGraphic
+            style={viz.style}
+            shooterIsPlayer={viz.shooterIsPlayer}
+            accentHex={playerAccentHex}
+          />
+        </motion.div>
+      )}
 
       <AnimatePresence>
         {hitEffect && hitEffect.active && (
@@ -682,35 +453,81 @@ export function Battlefield({
               top: `${hitEffect.y}%`
             }}
             initial={{ scale: 0, opacity: 1 }}
-            animate={{ scale: 2.35, opacity: 0 }}
+            animate={{ scale: 2, opacity: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.5, ease: 'easeOut' }}>
             <div className="absolute -inset-10 border-4 border-white rounded-full" />
-            <div className="absolute -inset-14 border-2 border-neon-yellow/90 rounded-full" />
-            <div className="absolute -inset-24 bg-neon-yellow/45 rounded-full blur-xl" />
-            <div className="absolute -inset-32 bg-white/25 rounded-full blur-2xl" />
+            <div className="absolute -inset-20 bg-neon-yellow/40 rounded-full blur-xl" />
+            {!reduceMotion ? (
+              <>
+                {[0, 1, 2, 3, 4, 5].map((i) => (
+                  <motion.div
+                    key={i}
+                    className="absolute h-1 w-1 rounded-full bg-neon-cyan"
+                    style={{
+                      left: `${-6 + (i % 3) * 6}px`,
+                      top: `${4 + Math.floor(i / 3) * 5}px`
+                    }}
+                    initial={{ opacity: 1, scale: 1, x: 0, y: 0 }}
+                    animate={{
+                      opacity: 0,
+                      scale: 0,
+                      x: (i % 2 === 0 ? 1 : -1) * (18 + i * 6),
+                      y: -22 - i * 4
+                    }}
+                    transition={{ duration: 0.45, ease: 'easeOut' }}
+                  />
+                ))}
+              </>
+            ) : null}
+
+            <motion.div
+              className="absolute -top-20 -left-10 text-4xl font-display font-black text-neon-yellow drop-shadow-[0_4px_0_rgba(0,0,0,0.5)]"
+              initial={{ y: 0, opacity: 1, scale: 0.5 }}
+              animate={{ y: -50, opacity: 0, scale: 1.5 }}
+              transition={{ duration: 1, ease: 'easeOut' }}>
+              -{hitEffect.damage}
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
-
-      {hitFlash ? (
-        <motion.div
-          className="pointer-events-none absolute inset-0 z-[95] bg-white"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: reduceMotion ? [0, 0.08, 0] : [0, 0.22, 0] }}
-          transition={{ duration: reduceMotion ? 0.12 : 0.24, ease: 'easeOut' }}
-        />
-      ) : null}
     </motion.div>
   );
+}
 
+function Platform({
+  x,
+  y,
+  color,
+  fill,
+  reduceMotion
+}: {
+  x: number;
+  y: number;
+  color: 'cyan' | 'magenta';
+  fill: string;
+  reduceMotion: boolean;
+}) {
+  const shadowColor =
+    color === 'cyan' ? 'shadow-neon-cyan' : 'shadow-neon-magenta';
+  const borderColor =
+    color === 'cyan' ? 'border-neon-cyan' : 'border-neon-magenta';
   return (
-    <div
-      ref={containerRef}
-      className="absolute inset-0 overflow-hidden"
-      style={{ backgroundColor: '#0f0620' }}>
-      <div className="absolute inset-0">{staticBackdrop}</div>
-      {wrapDynamic ? wrapDynamic(playfield) : playfield}
-    </div>
+    <motion.div
+      className={`absolute w-32 h-8 rounded-t-2xl border-t-[5px] ${borderColor} ${shadowColor}`}
+      style={{
+        left: `${x}%`,
+        top: `${y}%`,
+        transform: 'translateX(-50%)',
+        boxShadow: '0 6px 0 rgba(0,0,0,0.35)',
+        backgroundColor: fill
+      }}
+      animate={reduceMotion ? { y: 0 } : { y: [-2, 2, -2] }}
+      transition={
+        reduceMotion
+          ? { duration: 0 }
+          : { duration: 4, repeat: Infinity, ease: 'easeInOut' }
+      }
+    />
   );
 }
