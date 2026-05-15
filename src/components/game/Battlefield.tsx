@@ -5,6 +5,7 @@ import { getMapFloorTheme } from '../../game/mapFloorTheme';
 import type { CharacterId } from '../../game/charactersCatalog';
 import { ProjectileGraphic } from './projectiles/ProjectileGraphic';
 import { CharacterSticker } from './CharacterSticker';
+import { CombatFeedback } from './CombatFeedback';
 import type { WindDirection } from '../../game/artilleryPhysics';
 import {
   GROUND_Y,
@@ -111,6 +112,14 @@ export function Battlefield({
     active: boolean;
     damage: number;
   } | null>(null);
+  const [combatFeedbacks, setCombatFeedbacks] = useState<
+    Array<{
+      x: number;
+      y: number;
+      damage: number;
+      type: 'hit' | 'miss' | 'critical';
+    }>
+  >([]);
   const [cameraShake, setCameraShake] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const requestRef = useRef<number>();
@@ -210,6 +219,15 @@ export function Battlefield({
         physicsState.current.active = false;
         setProjectile(null);
         if (requestRef.current) cancelAnimationFrame(requestRef.current);
+        
+        // Add miss feedback
+        setCombatFeedbacks([{
+          x: x > OFFSCREEN_X_MAX ? 95 : x < OFFSCREEN_X_MIN ? 5 : x,
+          y: y > GROUND_Y ? 85 : y,
+          damage: 0,
+          type: 'miss'
+        }]);
+        
         setTimeout(() => {
           if (!cancelled) {
             onResultRef.current({
@@ -245,6 +263,16 @@ export function Battlefield({
           active: true,
           damage
         });
+        
+        // Add combat feedback
+        const isCritical = shotPowerRef.current > 80;
+        setCombatFeedbacks([{
+          x: targetX,
+          y: targetY,
+          damage,
+          type: isCritical ? 'critical' : 'hit'
+        }]);
+        
         setCameraShake(true);
         setTimeout(() => setCameraShake(false), 500);
         setTimeout(() => setHitEffect(null), 1500);
@@ -491,6 +519,12 @@ export function Battlefield({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Combat Feedback Layer */}
+      <CombatFeedback 
+        impacts={combatFeedbacks} 
+        reduceMotion={reduceMotion}
+      />
     </motion.div>
   );
 }
