@@ -19,17 +19,17 @@ export function GlassCard({
   ...props
 }: GlassCardProps) {
   const glowClasses = {
-    cyan: 'hover:border-neon-cyan/70 hover:shadow-neon-cyan',
-    magenta: 'hover:border-neon-magenta/70 hover:shadow-neon-magenta',
-    purple: 'hover:border-neon-purple/70 hover:shadow-neon-purple',
-    lime: 'hover:border-neon-lime/70 hover:shadow-neon-lime',
+    cyan: 'hover:border-neon-cyan/80 hover:shadow-[0_0_25px_rgba(0,240,255,0.6),0_0_50px_rgba(0,240,255,0.3)]',
+    magenta: 'hover:border-neon-magenta/80 hover:shadow-[0_0_25px_rgba(255,0,229,0.6),0_0_50px_rgba(255,0,229,0.3)]',
+    purple: 'hover:border-neon-purple/80 hover:shadow-[0_0_25px_rgba(139,92,246,0.6),0_0_50px_rgba(139,92,246,0.3)]',
+    lime: 'hover:border-neon-lime/80 hover:shadow-[0_0_25px_rgba(132,255,0,0.6),0_0_50px_rgba(132,255,0,0.3)]',
     none: ''
   };
 
   const baseSticker =
     variant === 'sticker'
-      ? 'border-4 border-white/85 bg-dark-card/90 shadow-[0_8px_0_0_rgba(0,0,0,0.35)] rounded-3xl'
-      : 'glass-panel rounded-2xl';
+      ? 'border-4 border-white/85 bg-dark-card/90 shadow-[0_8px_0_0_rgba(0,0,0,0.35),0_0_20px_rgba(255,255,255,0.1)] rounded-3xl'
+      : 'glass-panel rounded-2xl border border-white/15 shadow-[0_8px_32px_rgba(0,240,255,0.08)]';
 
   const hoverMotion =
     variant === 'sticker' && interactive

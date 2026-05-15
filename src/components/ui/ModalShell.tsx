@@ -88,25 +88,27 @@ export function ModalShell({
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            className={`max-h-[min(90dvh,90vh)] overflow-y-auto w-full max-w-lg rounded-3xl border-4 border-white/90 bg-dark-card shadow-[0_12px_0_0_rgba(0,0,0,0.35)] ${className}`}
+            className={`max-h-[min(90dvh,90vh)] overflow-y-auto w-full max-w-lg rounded-3xl border-4 border-white/90 bg-dark-card shadow-[0_12px_0_0_rgba(0,0,0,0.35),0_0_40px_rgba(0,240,255,0.2)] ${className}`}
             initial={{ scale: 0.92, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.92, opacity: 0, y: 20 }}
             transition={{ type: 'spring', damping: 22, stiffness: 320 }}
             onClick={(e) => e.stopPropagation()}>
-            <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b-4 border-white/15 bg-dark-card/95 px-5 py-4 backdrop-blur-sm">
+            <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b-4 border-white/15 bg-dark-card/95 px-5 py-4 backdrop-blur-sm shadow-[0_2px_12px_rgba(0,240,255,0.1)]">
               <h2
                 id={titleId}
-                className="font-display font-black text-2xl text-white tracking-tight">
+                className="font-display font-black text-2xl text-white tracking-tight drop-shadow-[0_0_8px_rgba(0,240,255,0.2)]">
                 {title}
               </h2>
-              <button
+              <motion.button
                 type="button"
                 onClick={onClose}
-                className="shrink-0 rounded-full border-2 border-white/40 bg-dark-darker px-3 py-1.5 text-sm font-display font-bold text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan"
+                className="shrink-0 rounded-full border-2 border-white/40 bg-dark-darker px-3 py-1.5 text-sm font-display font-bold text-white hover:border-neon-cyan hover:bg-neon-cyan/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan"
+                whileHover={{ scale: 1.1, rotate: 90 }}
+                whileTap={{ scale: 0.95 }}
                 aria-label="Close dialog">
                 ✕
-              </button>
+              </motion.button>
             </div>
             <div className="p-5">{children}</div>
           </motion.div>

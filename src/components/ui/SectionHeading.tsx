@@ -17,7 +17,7 @@ export function SectionHeading({
 }: SectionHeadingProps) {
   return (
     <h3
-      className={`font-display text-[10px] uppercase tracking-[0.25em] ${colorClassName} ${className}`}>
+      className={`font-display text-[11px] font-bold uppercase tracking-[0.3em] letter-spacing-wide drop-shadow-[0_0_8px_rgba(0,0,0,0.7)] ${colorClassName} ${className}`}>
       {children}
     </h3>
   );

@@ -23,10 +23,10 @@ export function NeonPillBadge({
   accentHex
 }: NeonPillBadgeProps) {
   const variants: Record<Exclude<NeonPillBadgeVariant, 'accent'>, string> = {
-    neutral: 'border-white/30 bg-white/5 text-gray-300',
-    cyan: 'border-neon-cyan/50 bg-neon-cyan/15 text-neon-cyan',
-    magenta: 'border-neon-magenta/50 bg-neon-magenta/15 text-neon-magenta',
-    lime: 'border-neon-lime/50 bg-neon-lime/15 text-neon-lime'
+    neutral: 'border-white/30 bg-white/5 text-gray-300 shadow-[0_0_12px_rgba(255,255,255,0.1)]',
+    cyan: 'border-neon-cyan/60 bg-neon-cyan/20 text-neon-cyan shadow-[0_0_15px_rgba(0,240,255,0.4)]',
+    magenta: 'border-neon-magenta/60 bg-neon-magenta/20 text-neon-magenta shadow-[0_0_15px_rgba(255,0,229,0.4)]',
+    lime: 'border-neon-lime/60 bg-neon-lime/20 text-neon-lime shadow-[0_0_15px_rgba(132,255,0,0.4)]'
   };
 
   const accentStyle =
@@ -34,7 +34,8 @@ export function NeonPillBadge({
       ? ({
           backgroundColor: `${accentHex}33`,
           borderColor: `${accentHex}88`,
-          color: accentHex
+          color: accentHex,
+          boxShadow: `0 0 15px ${accentHex}40`
         } as const)
       : undefined;
 
