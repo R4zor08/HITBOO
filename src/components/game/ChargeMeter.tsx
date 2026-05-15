@@ -44,12 +44,19 @@ export function ChargeMeter({
 
         {/* Power bar */}
         <div className="space-y-2">
-          <div className="h-2.5 rounded-full bg-slate-800 border border-slate-700 overflow-hidden shadow-sm-professional">
+          <div className="h-3 rounded-full bg-slate-800 border border-slate-700 overflow-hidden shadow-sm-professional relative">
             <motion.div
-              className="h-full bg-gradient-to-r from-indigo-500 via-blue-500 to-cyan-500"
+              className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500"
               animate={{ width: `${power}%` }}
               transition={{ duration: 0.1 }}
             />
+            {isCharging && power > 0 && (
+              <motion.div
+                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+                animate={{ x: ['-100%', '100%'] }}
+                transition={{ duration: 1, repeat: Infinity }}
+              />
+            )}
           </div>
         </div>
 

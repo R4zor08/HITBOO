@@ -18,13 +18,13 @@ export function NeonButton({
 }: NeonButtonProps) {
   const variants = {
     primary:
-      'bg-neon-cyan/25 border-neon-cyan shadow-[0_0_20px_rgba(0,240,255,0.5),0_8px_0_0_rgba(0,240,255,0.45)] hover:bg-neon-cyan/35 hover:shadow-[0_0_30px_rgba(0,240,255,0.7),0_8px_0_0_rgba(0,240,255,0.6)] focus-visible:ring-neon-cyan/75',
+      'bg-blue-600 border-blue-500 shadow-[0_4px_12px_rgba(59,130,246,0.3)] hover:bg-blue-500 hover:shadow-[0_6px_20px_rgba(59,130,246,0.5)] focus-visible:ring-blue-400/75',
     secondary:
-      'bg-neon-purple/25 border-neon-purple shadow-[0_0_20px_rgba(168,85,247,0.5),0_8px_0_0_rgba(168,85,247,0.4)] hover:bg-neon-purple/35 hover:shadow-[0_0_30px_rgba(168,85,247,0.7),0_8px_0_0_rgba(168,85,247,0.6)] focus-visible:ring-neon-purple/75',
+      'bg-purple-600 border-purple-500 shadow-[0_4px_12px_rgba(139,92,246,0.3)] hover:bg-purple-500 hover:shadow-[0_6px_20px_rgba(139,92,246,0.5)] focus-visible:ring-purple-400/75',
     danger:
-      'bg-neon-magenta/25 border-neon-magenta shadow-[0_0_20px_rgba(255,0,229,0.5),0_8px_0_0_rgba(255,0,229,0.4)] hover:bg-neon-magenta/35 hover:shadow-[0_0_30px_rgba(255,0,229,0.7),0_8px_0_0_rgba(255,0,229,0.6)] focus-visible:ring-neon-magenta/75',
+      'bg-rose-600 border-rose-500 shadow-[0_4px_12px_rgba(244,63,94,0.3)] hover:bg-rose-500 hover:shadow-[0_6px_20px_rgba(244,63,94,0.5)] focus-visible:ring-rose-400/75',
     success:
-      'bg-neon-lime/25 border-neon-lime shadow-[0_0_20px_rgba(180,255,0,0.5),0_8px_0_0_rgba(180,255,0,0.4)] hover:bg-neon-lime/35 hover:shadow-[0_0_30px_rgba(180,255,0,0.7),0_8px_0_0_rgba(180,255,0,0.6)] focus-visible:ring-neon-lime/75'
+      'bg-emerald-600 border-emerald-500 shadow-[0_4px_12px_rgba(34,197,94,0.3)] hover:bg-emerald-500 hover:shadow-[0_6px_20px_rgba(34,197,94,0.5)] focus-visible:ring-emerald-400/75'
   };
   const sizes = {
     sm: 'px-4 py-2 text-sm rounded-lg',
@@ -35,7 +35,7 @@ export function NeonButton({
   return (
     <motion.button
       disabled={disabled}
-      className={`touch-manipulation relative border-4 uppercase font-display font-black tracking-wide text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] transition-all duration-200 backdrop-blur-sm outline-none focus-visible:ring-4 focus-visible:ring-offset-2 focus-visible:ring-offset-dark-darker disabled:text-white/75 disabled:opacity-45 disabled:cursor-not-allowed disabled:shadow-none ${variants[variant]} ${sizes[size]} ${className}`}
+      className={`touch-manipulation relative border border-current font-sans font-semibold tracking-wide text-white transition-all duration-200 outline-none focus-visible:ring-4 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 disabled:text-white/50 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none ${variants[variant]} ${sizes[size]} ${className}`}
       whileHover={
         disabled
           ? {}

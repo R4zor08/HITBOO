@@ -892,7 +892,7 @@ export function GameScreen({
   );
 
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-[#0f0622] select-none touch-none">
+    <div className="relative w-full h-screen overflow-hidden bg-slate-950 select-none touch-none">
       <GameSceneBoundary
         fallback={
           <div className="absolute inset-0 z-20 flex items-center justify-center px-6">

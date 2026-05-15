@@ -8,23 +8,23 @@ export default {
     extend: {
       colors: {
         dark: {
-          DEFAULT: '#0a0e27',
-          darker: '#050816',
-          card: 'rgba(10, 14, 39, 0.6)',
+          DEFAULT: '#0f172a',
+          darker: '#0f1419',
+          card: 'rgba(15, 23, 42, 0.6)',
         },
         neon: {
-          cyan: '#00f0ff',
-          magenta: '#ff00e5',
+          cyan: '#06b6d4',
+          magenta: '#ec4899',
           purple: '#8b5cf6',
-          lime: '#84ff00',
-          yellow: '#ffea00',
+          lime: '#22c55e',
+          yellow: '#eab308',
         },
         rarity: {
-          common: '#9ca3af',
-          rare: '#22c55e',
+          common: '#64748b',
+          rare: '#10b981',
           epic: '#3b82f6',
-          legendary: '#a855f7',
-          mythic: '#eab308',
+          legendary: '#8b5cf6',
+          mythic: '#f59e0b',
         }
       },
       fontFamily: {
