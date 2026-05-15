@@ -22,38 +22,47 @@ export function ChargeMeter({
   
   return (
     <motion.div
-      className={`fixed ${positionClass} bottom-32 z-30 w-48`}
+      className={`fixed ${positionClass} bottom-32 z-30 w-56`}
       initial={{ opacity: 0, x: isPlayerTurn ? -20 : 20 }}
-      animate={{ opacity: isCharging ? 1 : 0.6, x: 0 }}
+      animate={{ opacity: 1, x: 0 }}
       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
     >
-      <div className="rounded-2xl border-3 border-neon-cyan/60 bg-black/40 backdrop-blur-sm px-4 py-3 shadow-[0_0_20px_rgba(0,240,255,0.3)]">
-        <div className="mb-3 flex items-baseline justify-between">
-          <span className="font-display font-bold text-xs uppercase text-neon-cyan tracking-widest">
-            Charge
+      <div className="card-professional rounded-xl px-4 py-4 space-y-3">
+        {/* Header with power display */}
+        <div className="flex items-center justify-between pb-2 border-b border-slate-700/50">
+          <span className="font-sans font-semibold text-xs uppercase text-slate-400 tracking-wider">
+            Power
           </span>
           <motion.span
-            className="text-lg font-black text-neon-cyan"
-            animate={{ scale: isCharging ? [1, 1.1, 1] : 1 }}
-            transition={{ duration: 0.6, repeat: isCharging ? Infinity : 0 }}
+            className="text-2xl font-bold text-slate-200"
+            animate={{ scale: isCharging ? [1, 1.08, 1] : 1 }}
+            transition={{ duration: 0.5, repeat: isCharging ? Infinity : 0 }}
           >
             {powerDisplay}%
           </motion.span>
         </div>
 
-        <ProgressBar
-          progress={power}
-          height="h-4"
-          color="bg-gradient-to-r from-neon-cyan to-neon-magenta"
-          arcade={true}
-          reduceMotion={reduceMotion}
-        />
+        {/* Power bar */}
+        <div className="space-y-2">
+          <div className="h-2.5 rounded-full bg-slate-800 border border-slate-700 overflow-hidden shadow-sm-professional">
+            <motion.div
+              className="h-full bg-gradient-to-r from-indigo-500 via-blue-500 to-cyan-500"
+              animate={{ width: `${power}%` }}
+              transition={{ duration: 0.1 }}
+            />
+          </div>
+        </div>
 
-        <div className="mt-3 pt-2 border-t border-white/10 flex justify-between text-[10px] font-display text-gray-400">
-          <span>ANG: {Math.round(angle)}°</span>
-          <span className={isCharging ? 'text-neon-magenta' : 'text-gray-500'}>
-            {isCharging ? 'CHARGING...' : 'READY'}
-          </span>
+        {/* Stats footer */}
+        <div className="pt-2 border-t border-slate-700/50 flex justify-between text-xs font-sans text-slate-400">
+          <span>Angle: {Math.round(angle)}°</span>
+          <motion.span
+            animate={{ opacity: isCharging ? [0.5, 1] : 0.7 }}
+            transition={{ duration: 0.6, repeat: isCharging ? Infinity : 0 }}
+            className={isCharging ? 'text-blue-400' : 'text-slate-500'}
+          >
+            {isCharging ? 'Charging' : 'Ready'}
+          </motion.span>
         </div>
       </div>
     </motion.div>

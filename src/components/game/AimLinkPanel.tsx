@@ -1,6 +1,5 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { NeonButton } from '../ui/NeonButton';
 
 interface AimLinkPanelProps {
   onDismiss: () => void;
@@ -12,42 +11,48 @@ export function AimLinkPanel({ onDismiss, isVisible }: AimLinkPanelProps) {
 
   return (
     <motion.div
-      className="pointer-events-auto fixed top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2"
-      initial={{ opacity: 0, scale: 0.8, y: -20 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.8, y: 20 }}
-      transition={{ type: 'spring', damping: 24, stiffness: 300 }}
+      className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onDismiss}
     >
-      <div className="w-fit rounded-3xl border-4 border-neon-cyan bg-dark-card/95 px-8 py-6 backdrop-blur-sm shadow-[0_0_30px_rgba(0,240,255,0.5)]">
-        <h3 className="font-display font-black text-xl text-neon-cyan text-center mb-4 tracking-wider">
-          AIM LINK
+      <motion.div
+        className="card-professional rounded-xl px-8 py-6 max-w-md w-full mx-4"
+        initial={{ opacity: 0, scale: 0.9, y: -20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9, y: 20 }}
+        transition={{ type: 'spring', damping: 24, stiffness: 300 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="font-sans font-bold text-2xl text-slate-200 text-center mb-4 tracking-tight">
+          How to Play
         </h3>
         
-        <div className="space-y-3 text-sm font-display text-gray-300 text-center mb-6">
-          <div className="flex items-center justify-center gap-2">
-            <span className="text-neon-cyan">→</span>
-            <span>Press your sticker, pull back to charge trajectory,</span>
+        <div className="space-y-4 text-sm text-slate-400 mb-6">
+          <div className="flex gap-3">
+            <span className="text-indigo-400 font-semibold flex-shrink-0">1.</span>
+            <p>Click on your character and drag back to charge your shot</p>
           </div>
-          <div className="flex items-center justify-center gap-2">
-            <span className="text-neon-cyan">→</span>
-            <span>release to fire</span>
+          <div className="flex gap-3">
+            <span className="text-indigo-400 font-semibold flex-shrink-0">2.</span>
+            <p>Adjust angle and power using arrow keys or WASD</p>
           </div>
-          <div className="mt-4 space-y-2 border-t border-white/10 pt-3">
-            <div><span className="text-neon-magenta font-bold">Keys:</span> Arrows / WASD, Space to shoot</div>
+          <div className="flex gap-3">
+            <span className="text-indigo-400 font-semibold flex-shrink-0">3.</span>
+            <p>Release the mouse or press Space to fire at your opponent</p>
           </div>
         </div>
 
-        <div className="flex justify-center">
-          <NeonButton
-            variant="primary"
-            size="md"
+        <div className="pt-4 border-t border-slate-700/50">
+          <button
             onClick={onDismiss}
-            className="px-6"
+            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 rounded-lg transition-colors duration-200 shadow-md-professional"
           >
-            OK
-          </NeonButton>
+            Got it
+          </button>
         </div>
-      </div>
+      </motion.div>
     </motion.div>
   );
 }

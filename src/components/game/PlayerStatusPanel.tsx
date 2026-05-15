@@ -28,10 +28,6 @@ export function PlayerStatusPanel({
   reduceMotion
 }: PlayerStatusPanelProps) {
   const isLeft = position === 'left';
-  const borderColor = isCurrentTurn ? 'border-neon-cyan' : 'border-white/40';
-  const glowColor = isCurrentTurn
-    ? '0 0 25px rgba(0, 240, 255, 0.5)'
-    : 'none';
 
   return (
     <motion.div
@@ -41,60 +37,59 @@ export function PlayerStatusPanel({
       transition={{ type: 'spring', stiffness: 300, damping: 28 }}
     >
       <div
-        className={`rounded-3xl border-3 ${borderColor} bg-black/50 backdrop-blur-sm p-4 transition-all duration-300`}
-        style={{
-          boxShadow: isCurrentTurn
-            ? `${glowColor}, inset 0 0 15px rgba(0, 240, 255, 0.1)`
-            : 'none'
-        }}
+        className={`rounded-xl border transition-all duration-300 ${
+          isCurrentTurn
+            ? 'card-professional border-slate-600'
+            : 'card-professional border-slate-700/50'
+        } p-4`}
       >
         {/* Header with name and rank */}
-        <div className="mb-3 flex items-start justify-between gap-2">
-          <div className="flex-1">
-            <h3 className="font-display font-black text-sm uppercase text-white truncate tracking-wider">
+        <div className="mb-3 flex items-center justify-between gap-3 pb-2 border-b border-slate-700/50">
+          <div className="flex-1 min-w-0">
+            <h3 className="font-sans font-semibold text-sm uppercase text-slate-200 truncate tracking-wide">
               {name}
             </h3>
-            <div className="text-[10px] font-display text-gray-400">
-              LVL: <span className="text-neon-magenta font-bold">{rank}</span>
-            </div>
+            <div className="text-xs text-slate-500 mt-0.5">Level {rank}</div>
           </div>
 
           {/* Character avatar */}
           {characterId && (
-            <div className="w-12 h-12 rounded-full border-2 border-current overflow-hidden flex-shrink-0">
+            <div className="w-10 h-10 rounded-lg bg-slate-800/80 border border-slate-700/50 overflow-hidden flex-shrink-0">
               <StickerAvatar
                 characterId={characterId}
-                scale={1.2}
+                scale={1.1}
                 accentHex={accentColor}
               />
             </div>
           )}
         </div>
 
-        {/* Health bar */}
-        <div className="mb-2">
-          <ProgressBar
-            progress={(hp / maxHp) * 100}
-            height="h-4"
-            color={isCurrentTurn ? 'bg-neon-cyan' : 'bg-neon-magenta'}
-            arcade={true}
-            reduceMotion={reduceMotion}
-          />
-        </div>
-
-        {/* HP text */}
-        <div className="text-right text-xs font-display font-bold text-white/80">
-          {Math.max(0, hp)} <span className="text-white/50">/ {maxHp} HP</span>
+        {/* Health section */}
+        <div className="mb-3 space-y-2">
+          <div className="flex items-center justify-between px-0.5">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Health</span>
+            <span className="text-xs font-semibold text-slate-300">
+              {Math.max(0, hp)}/{maxHp}
+            </span>
+          </div>
+          <div className="h-2.5 rounded-full bg-slate-800 border border-slate-700 overflow-hidden shadow-sm-professional">
+            <motion.div
+              className="h-full bg-gradient-to-r from-blue-600 to-indigo-500"
+              initial={{ width: '100%' }}
+              animate={{ width: `${(hp / maxHp) * 100}%` }}
+              transition={{ duration: 0.6 }}
+            />
+          </div>
         </div>
 
         {/* Turn indicator */}
         {isCurrentTurn && (
           <motion.div
-            className="mt-2 rounded-lg bg-neon-cyan/20 border border-neon-cyan px-2 py-1 text-center"
-            animate={{ opacity: [1, 0.6, 1] }}
-            transition={{ duration: 1.5, repeat: Infinity }}
+            className="rounded-lg bg-slate-800/80 border border-slate-600 px-2 py-2 text-center"
+            animate={{ backgroundColor: ['rgba(30, 41, 59, 0.8)', 'rgba(51, 65, 85, 0.9)'] }}
+            transition={{ duration: 1.2, repeat: Infinity }}
           >
-            <div className="text-[9px] font-display font-bold text-neon-cyan uppercase tracking-widest">
+            <div className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
               Your Turn
             </div>
           </motion.div>
