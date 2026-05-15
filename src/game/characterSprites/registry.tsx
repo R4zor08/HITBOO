@@ -43,6 +43,16 @@ import {
   SpriteR4C09Yeti,
   SpriteR5C01Swimmer
 } from './allBodies';
+import {
+  SpriteArcadeC01Barbarian,
+  SpriteArcadeC02Assassin,
+  SpriteArcadeC03BananaWarrior,
+  SpriteArcadeC04Pirate,
+  SpriteArcadeC05Cowboy,
+  SpriteArcadeC06Alien,
+  SpriteArcadeC07ConstructionWorker,
+  SpriteArcadeC08Student
+} from './arcadeOriginals';
 
 export const CHARACTER_SPRITE_BODIES: Record<
   CharacterId,
@@ -91,5 +101,14 @@ export const CHARACTER_SPRITE_BODIES: Record<
   r4_c08_bear: SpriteR4C08Bear,
   r4_c09_yeti: SpriteR4C09Yeti,
 
-  r5_c01_swimmer: SpriteR5C01Swimmer
+  r5_c01_swimmer: SpriteR5C01Swimmer,
+
+  arcade_c01_barbarian: SpriteArcadeC01Barbarian,
+  arcade_c02_assassin: SpriteArcadeC02Assassin,
+  arcade_c03_banana_warrior: SpriteArcadeC03BananaWarrior,
+  arcade_c04_pirate: SpriteArcadeC04Pirate,
+  arcade_c05_cowboy: SpriteArcadeC05Cowboy,
+  arcade_c06_alien: SpriteArcadeC06Alien,
+  arcade_c07_construction_worker: SpriteArcadeC07ConstructionWorker,
+  arcade_c08_student: SpriteArcadeC08Student
 };

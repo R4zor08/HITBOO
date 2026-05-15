@@ -42,7 +42,15 @@ export type CharacterId =
   | 'r4_c07_dino'
   | 'r4_c08_bear'
   | 'r4_c09_yeti'
-  | 'r5_c01_swimmer';
+  | 'r5_c01_swimmer'
+  | 'arcade_c01_barbarian'
+  | 'arcade_c02_assassin'
+  | 'arcade_c03_banana_warrior'
+  | 'arcade_c04_pirate'
+  | 'arcade_c05_cowboy'
+  | 'arcade_c06_alien'
+  | 'arcade_c07_construction_worker'
+  | 'arcade_c08_student';
 
 export type CharacterCatalogEntry = {
   id: CharacterId;
@@ -163,7 +171,16 @@ export const CHARACTER_CATALOG: CharacterCatalogEntry[] = [
     id: 'r5_c01_swimmer',
     displayName: 'Tubeman',
     sheetRef: 'Row 5 (idle / inner tube)'
-  }
+  },
+
+  { id: 'arcade_c01_barbarian', displayName: 'Barbarian', sheetRef: 'Arcade Original 1' },
+  { id: 'arcade_c02_assassin', displayName: 'Assassin', sheetRef: 'Arcade Original 2' },
+  { id: 'arcade_c03_banana_warrior', displayName: 'Banana Warrior', sheetRef: 'Arcade Original 3' },
+  { id: 'arcade_c04_pirate', displayName: 'Pirate Captain', sheetRef: 'Arcade Original 4' },
+  { id: 'arcade_c05_cowboy', displayName: 'Cowboy', sheetRef: 'Arcade Original 5' },
+  { id: 'arcade_c06_alien', displayName: 'Alien', sheetRef: 'Arcade Original 6' },
+  { id: 'arcade_c07_construction_worker', displayName: 'Worker', sheetRef: 'Arcade Original 7' },
+  { id: 'arcade_c08_student', displayName: 'Student', sheetRef: 'Arcade Original 8' }
 ];
 
 export const DEFAULT_PLAYER_CHARACTER_ID: CharacterId = 'r1_c09_cupid';

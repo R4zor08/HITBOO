@@ -251,6 +251,79 @@ export const WEAPONS_CATALOG: WeaponCatalogEntry[] = [
     rarity: 'rare',
     projectileStyle: 'energy_ring',
     physicsPreset: 'arc_light'
+  },
+
+  {
+    id: 'explosive_fish',
+    sheetIndex: 26,
+    name: 'Explosive Fish',
+    icon: '🐟',
+    rarity: 'epic',
+    projectileStyle: 'football',
+    physicsPreset: 'arc_default'
+  },
+  {
+    id: 'giant_slippers',
+    sheetIndex: 27,
+    name: 'Giant Slippers',
+    icon: '👟',
+    rarity: 'rare',
+    projectileStyle: 'baseball_bat',
+    physicsPreset: 'lob_slow'
+  },
+  {
+    id: 'rocket_frying_pan',
+    sheetIndex: 28,
+    name: 'Rocket Pan',
+    icon: '🍳',
+    rarity: 'epic',
+    projectileStyle: 'fire_axe',
+    physicsPreset: 'line_fast'
+  },
+  {
+    id: 'soda_launcher',
+    sheetIndex: 29,
+    name: 'Soda Launcher',
+    icon: '🥤',
+    rarity: 'rare',
+    projectileStyle: 'launcher_bolt',
+    physicsPreset: 'line_fast'
+  },
+  {
+    id: 'rubber_chicken',
+    sheetIndex: 30,
+    name: 'Rubber Chicken',
+    icon: '🐔',
+    rarity: 'common',
+    projectileStyle: 'baseball_bat',
+    physicsPreset: 'arc_light'
+  },
+  {
+    id: 'disco_ball',
+    sheetIndex: 31,
+    name: 'Disco Ball',
+    icon: '🪩',
+    rarity: 'rare',
+    projectileStyle: 'energy_ring',
+    physicsPreset: 'line_fast'
+  },
+  {
+    id: 'pineapple_bomb',
+    sheetIndex: 32,
+    name: 'Pineapple Bomb',
+    icon: '🍍',
+    rarity: 'epic',
+    projectileStyle: 'molotov',
+    physicsPreset: 'lob_slow'
+  },
+  {
+    id: 'waffle_launcher',
+    sheetIndex: 33,
+    name: 'Waffle Launcher',
+    icon: '🧇',
+    rarity: 'rare',
+    projectileStyle: 'launcher_bolt',
+    physicsPreset: 'arc_default'
   }
 ];
 
