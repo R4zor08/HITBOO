@@ -39,6 +39,10 @@ import { getSkillBehavior } from '../game/skillBehaviorConfig';
 import { playBlip, playHit, playMiss } from '../game/gameAudio';
 import type { MatchResult } from '../game/matchResult';
 import { STORAGE } from '../game/storageKeys';
+import { AimLinkPanel } from '../components/game/AimLinkPanel';
+import { ChargeMeter } from '../components/game/ChargeMeter';
+import { PlayerStatusPanel } from '../components/game/PlayerStatusPanel';
+import { WeaponLoadoutPanel } from '../components/game/WeaponLoadoutPanel';
 
 if (!PLAYABLE_WEAPON_PRESETS.length) {
   throw new Error('PLAYABLE_WEAPON_PRESETS must not be empty');
@@ -912,6 +916,65 @@ export function GameScreen({
             </GlassCard>
           </div>
         }>
+        {/* AIM LINK instructions panel */}
+        <AimLinkPanel
+          isVisible={showMatchTips}
+          onDismiss={dismissMatchTips}
+        />
+
+        {/* Player status panels */}
+        <PlayerStatusPanel
+          position="left"
+          name={playerDisplayName}
+          hp={playerHp}
+          maxHp={100}
+          rank={playerRankLabel}
+          isCurrentTurn={isPlayerTurn}
+          characterId={
+            local2p && local2pLoadout
+              ? local2pLoadout.p1CharacterId
+              : progress.equippedCharacterId
+          }
+          accentColor={progress.playerAccentHex}
+          reduceMotion={reduceMotion}
+        />
+
+        <PlayerStatusPanel
+          position="right"
+          name={enemyName}
+          hp={enemyHp}
+          maxHp={100}
+          rank={enemyRankLabel}
+          isCurrentTurn={!isPlayerTurn && !practice}
+          characterId={
+            local2p && local2pLoadout
+              ? local2pLoadout.p2CharacterId
+              : progress.equippedEnemyCharacterId
+          }
+          accentColor="#ff00e5"
+          reduceMotion={reduceMotion}
+        />
+
+        {/* Charge meter */}
+        {isPlayerTurn && (
+          <ChargeMeter
+            power={aimPower}
+            angle={aimAngle}
+            isCharging={isAiming}
+            isPlayerTurn={isPlayerTurn}
+            reduceMotion={reduceMotion}
+          />
+        )}
+
+        {/* Weapon loadout panel */}
+        <WeaponLoadoutPanel
+          selectedWeaponId={selectedWeaponId}
+          onWeaponSelect={setSelectedWeaponId}
+          availableWeapons={PLAYABLE_WEAPON_PRESETS}
+          isPlayerTurn={isPlayerTurn && !local2p}
+          reduceMotion={reduceMotion}
+        />
+
         <motion.div
           ref={arenaSurfaceRef}
           className="absolute inset-0"
