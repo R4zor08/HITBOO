@@ -42,7 +42,6 @@ import { STORAGE } from '../game/storageKeys';
 import { AimLinkPanel } from '../components/game/AimLinkPanel';
 import { ChargeMeter } from '../components/game/ChargeMeter';
 import { PlayerStatusPanel } from '../components/game/PlayerStatusPanel';
-import { WeaponLoadoutPanel } from '../components/game/WeaponLoadoutPanel';
 
 if (!PLAYABLE_WEAPON_PRESETS.length) {
   throw new Error('PLAYABLE_WEAPON_PRESETS must not be empty');
@@ -966,15 +965,6 @@ export function GameScreen({
           />
         )}
 
-        {/* Weapon loadout panel */}
-        <WeaponLoadoutPanel
-          selectedWeaponId={selectedWeaponId}
-          onWeaponSelect={setSelectedWeaponId}
-          availableWeapons={PLAYABLE_WEAPON_PRESETS}
-          isPlayerTurn={isPlayerTurn && !local2p}
-          reduceMotion={reduceMotion}
-        />
-
         <motion.div
           ref={arenaSurfaceRef}
           className="absolute inset-0"
@@ -1392,94 +1382,8 @@ export function GameScreen({
                   exit={{ y: 28, opacity: 0 }}
                   transition={{ type: 'spring', stiffness: 200, damping: 24 }}
                   className="pointer-events-auto flex w-full max-w-xl flex-col items-stretch gap-2 px-1 sm:px-2">
-                  {!local2p ? (
-                    <GlassCard
-                      variant="sticker"
-                      className="border border-neon-cyan/28 bg-dark-card/72 px-2 py-2 shadow-[0_0_22px_rgba(0,240,255,0.08)] backdrop-blur-md">
-                      <SectionHeading
-                        colorClassName="text-gray-500"
-                        className="text-center text-[10px]">
-                        LOADOUT
-                      </SectionHeading>
-                      <div className="relative mt-1">
-                        <div
-                          className="pointer-events-none absolute left-0 top-0 bottom-0 z-10 w-7 bg-gradient-to-r from-[#0f0622] to-transparent"
-                          aria-hidden
-                        />
-                        <div
-                          className="pointer-events-none absolute right-0 top-0 bottom-0 z-10 w-7 bg-gradient-to-l from-[#0f0622] to-transparent"
-                          aria-hidden
-                        />
-                        <div className="relative z-0 flex snap-x snap-mandatory flex-nowrap gap-1.5 overflow-x-auto scroll-smooth pb-0.5 [-webkit-overflow-scrolling:touch]">
-                          {PLAYABLE_WEAPON_PRESETS.map((w: Weapon) => {
-                            const selected = selectedWeaponId === w.id;
-                            const card = (
-                              <GlassCard
-                                variant="sticker"
-                                interactive
-                                glowColor={selected ? 'cyan' : 'none'}
-                                className={`flex h-full shrink-0 cursor-pointer items-center gap-1.5 border px-2 py-1.5 ${
-                                  selected
-                                    ? 'ring-2 ring-neon-cyan border-neon-cyan/50'
-                                    : 'border-white/20'
-                                }`}
-                                onClick={() => {
-                                  setSelectedWeaponId(w.id);
-                                  progress.setEquippedWeaponId(w.id);
-                                }}>
-                                <span className="text-base leading-none">
-                                  {w.icon}
-                                </span>
-                                <span className="font-display text-[11px] leading-tight text-gray-200">
-                                  {w.name}
-                                </span>
-                              </GlassCard>
-                            );
-                            return (
-                              <div
-                                key={w.id}
-                                className="snap-start shrink-0 max-w-[9.5rem]">
-                                {selected && !reduceMotion ? (
-                                  <motion.div
-                                    className="rounded-3xl"
-                                    animate={{
-                                      boxShadow: [
-                                        '0 0 0 rgba(0,240,255,0)',
-                                        '0 0 18px rgba(0,240,255,0.45)',
-                                        '0 0 0 rgba(0,240,255,0)'
-                                      ]
-                                    }}
-                                    transition={{
-                                      duration: 2.4,
-                                      repeat: Infinity,
-                                      ease: 'easeInOut'
-                                    }}>
-                                    {card}
-                                  </motion.div>
-                                ) : (
-                                  card
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </GlassCard>
-                  ) : null}
-                  {local2p ? (
-                    <GlassCard
-                      variant="sticker"
-                      className="border border-white/15 bg-dark-card/70 px-3 py-2 text-center">
-                      <p className="font-display text-[10px] uppercase tracking-wider text-gray-500">
-                        Armed
-                      </p>
-                      <p className="font-display text-sm text-white">
-                        {activeWeapon.icon} {activeWeapon.name}
-                      </p>
-                    </GlassCard>
-                  ) : null}
-                  <p className="text-center font-display text-[10px] tracking-wide text-gray-500">
-                    Drag from active sticker · release fires · Space / Enter
+                  <p className="text-center font-sans text-xs tracking-wide text-slate-400">
+                    Drag from your character · Release to fire
                   </p>
                 </motion.div>
               ) : null}
